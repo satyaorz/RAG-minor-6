@@ -1,0 +1,94 @@
+from __future__ import annotations
+
+import json
+from typing import Protocol
+
+from treeqa.config import TreeQASettings
+from treeqa.models import RetrievedDocument
+
+
+class VectorBackend(Protocol):
+    def search(self, question: str, limit: int) -> list[RetrievedDocument]:
+        ...
+
+
+class MemoryVectorBackend:
+    def __init__(self, documents: dict[str, str] | None = None) -> None:
+        self.documents = documents or {
+            "doc-1": "HotpotQA is a benchmark for multi-hop question answering.",
+            "doc-2": "LangGraph helps orchestrate multi-step agent workflows.",
+            "doc-3": "Wikidata and Neo4j can provide structured factual evidence.",
+        }
+
+    def search(self, question: str, limit: int) -> list[RetrievedDocument]:
+        question_terms = {term.lower().strip("?,.") for term in question.split() if term}
+        results: list[RetrievedDocument] = []
+        for source_id, content in self.documents.items():
+            content_terms = {term.lower().strip("?,.") for term in content.split() if term}
+            overlap = len(question_terms & content_terms)
+            if overlap == 0:
+                continue
+            results.append(
+                RetrievedDocument(
+                    source_id=source_id,
+                    source_type="vector",
+                    content=content,
+                    score=overlap / max(len(question_terms), 1),
+                )
+            )
+        return sorted(results, key=lambda document: document.score, reverse=True)[:limit]
+
+
+class QdrantVectorBackend:
+    def __init__(self, url: str, collection_name: str, api_key: str = "") -> None:
+        try:
+            from qdrant_client import QdrantClient
+        except ImportError as error:
+            raise RuntimeError(
+                "qdrant-client is required for TREEQA_VECTOR_PROVIDER=qdrant."
+            ) from error
+
+        self.client = QdrantClient(url=url, api_key=api_key or None)
+        self.collection_name = collection_name
+
+    def search(self, question: str, limit: int) -> list[RetrievedDocument]:
+        response = self.client.query_points(
+            collection_name=self.collection_name,
+            query=question,
+            limit=limit,
+            with_payload=True,
+        )
+        points = getattr(response, "points", response)
+        results: list[RetrievedDocument] = []
+        for point in points:
+            payload = getattr(point, "payload", {}) or {}
+            content = payload.get("content") or payload.get("text") or json.dumps(payload)
+            results.append(
+                RetrievedDocument(
+                    source_id=str(payload.get("id") or getattr(point, "id", "")),
+                    source_type="vector",
+                    content=content,
+                    score=float(getattr(point, "score", 0.0) or 0.0),
+                )
+            )
+        return results
+
+
+def build_vector_backend(settings: TreeQASettings) -> VectorBackend:
+    provider = settings.vector_provider.strip().lower()
+    if provider in {"", "memory"}:
+        return MemoryVectorBackend()
+    if provider == "qdrant":
+        if not settings.vector_store_url:
+            raise ValueError("VECTOR_STORE_URL must be set when TREEQA_VECTOR_PROVIDER=qdrant.")
+        if not settings.vector_collection:
+            raise ValueError(
+                "TREEQA_VECTOR_COLLECTION must be set when TREEQA_VECTOR_PROVIDER=qdrant."
+            )
+        return QdrantVectorBackend(
+            url=settings.vector_store_url,
+            collection_name=settings.vector_collection,
+            api_key=settings.vector_api_key,
+        )
+    raise ValueError(f"Unsupported vector provider: {settings.vector_provider}")
+
