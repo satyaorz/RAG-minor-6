@@ -2,7 +2,7 @@ import unittest
 
 from treeqa.agents.corrector import CorrectionEngine
 from treeqa.agents.decomposer import QueryDecomposer
-from treeqa.backends.llm import OpenAICompatibleLLMClient, build_llm_client
+from treeqa.backends.llm import FallbackLLMClient, OpenAICompatibleLLMClient, build_llm_client
 from treeqa.config import TreeQASettings
 from treeqa.models import RetrievedDocument
 from treeqa.retrieval.hybrid import HybridRetriever
@@ -63,10 +63,10 @@ class AdapterTest(unittest.TestCase):
             )
         )
 
-        nodes = decomposer.decompose("Who built TreeQA and how is it validated?")
+        root = decomposer.decompose("Who built TreeQA and how is it validated?")
 
         self.assertEqual(
-            [node.question for node in nodes],
+            [node.question for node in root.children],
             ["Who built TreeQA?", "How is it validated?"],
         )
 
@@ -93,7 +93,7 @@ class AdapterTest(unittest.TestCase):
     def test_build_llm_client_for_openrouter_provider(self) -> None:
         settings = TreeQASettings(
             llm_provider="openrouter",
-            llm_model="meta-llama/llama-3.3-70b-instruct:free",
+            llm_model="qwen/qwen3-32b:free",
             llm_base_url="https://openrouter.ai/api/v1",
             openrouter_api_key="router-key",
             openrouter_site_url="http://localhost",
@@ -105,6 +105,32 @@ class AdapterTest(unittest.TestCase):
         self.assertIsInstance(client, OpenAICompatibleLLMClient)
         self.assertEqual(client.base_url, "https://openrouter.ai/api/v1")
         self.assertEqual(client.extra_headers, {"HTTP-Referer": "http://localhost", "X-Title": "TreeQA"})
+
+    def test_build_llm_client_uses_fallback_wrapper_for_multiple_models(self) -> None:
+        settings = TreeQASettings(
+            llm_provider="openrouter",
+            llm_model="qwen/qwen3-32b:free",
+            llm_fallback_models=(
+                "arcee-ai/trinity-large-preview:free",
+                "openrouter/free",
+            ),
+            llm_base_url="https://openrouter.ai/api/v1",
+            openrouter_api_key="router-key",
+            openrouter_site_url="http://localhost",
+            openrouter_app_name="TreeQA",
+        )
+
+        client = build_llm_client(settings)
+
+        self.assertIsInstance(client, FallbackLLMClient)
+        self.assertEqual(
+            [wrapped.model for wrapped in client.clients],
+            [
+                "qwen/qwen3-32b:free",
+                "arcee-ai/trinity-large-preview:free",
+                "openrouter/free",
+            ],
+        )
 
 
 if __name__ == "__main__":

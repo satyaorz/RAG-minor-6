@@ -8,7 +8,7 @@ from treeqa.agents import (
 )
 from treeqa.backends import build_graph_backend, build_llm_client, build_vector_backend
 from treeqa.config import TreeQASettings
-from treeqa.models import PipelineResult, QueryNode
+from treeqa.models import PipelineResult, QueryNode, ValidationResult
 from treeqa.retrieval import HybridRetriever
 from treeqa.state import WorkflowState
 
@@ -36,17 +36,40 @@ class TreeQAPipeline:
         self.generator = generator or AnswerGenerator(llm_client=llm_client)
 
     def run(self, query: str) -> PipelineResult:
-        state = WorkflowState(query=query, nodes=self.decomposer.decompose(query))
-        for node in state.nodes:
-            self._resolve_node(node)
-        state.final_answer = self.generator.generate_final(state.query, state.nodes)
+        root = self.decomposer.decompose(query)
+        state = WorkflowState(query=query, root=root, nodes=self._flatten_leaves(root))
+        self._resolve_tree(state.root)
+        state.nodes = self._flatten_leaves(state.root)
+        state.final_answer = state.root.answer or self.generator.generate_final(state.query, state.nodes)
         return PipelineResult(
             query=state.query,
+            root=state.root,
             nodes=state.nodes,
             final_answer=state.final_answer,
         )
 
-    def _resolve_node(self, node: QueryNode) -> None:
+    def _resolve_tree(self, node: QueryNode) -> None:
+        if node.children:
+            for child in node.children:
+                self._resolve_tree(child)
+            node.answer = self.generator.generate_final(node.question, node.children)
+            node.attempts = max((child.attempts for child in node.children), default=0)
+            node.status = (
+                "verified"
+                if all(child.status == "verified" for child in node.children)
+                else "needs_review"
+            )
+            confidences = [
+                child.validation.confidence
+                for child in node.children
+                if child.validation is not None
+            ]
+            if confidences:
+                node.validation = self._build_group_validation(node.status, confidences)
+            return
+        self._resolve_leaf(node)
+
+    def _resolve_leaf(self, node: QueryNode) -> None:
         question = node.question
         for attempt in range(self.settings.max_retries + 1):
             node.attempts = attempt + 1
@@ -58,3 +81,26 @@ class TreeQAPipeline:
                 return
             question = self.corrector.refine(question, node.attempts)
         node.status = "needs_review"
+
+    def _flatten_leaves(self, root: QueryNode) -> list[QueryNode]:
+        if root.is_leaf:
+            return [root]
+        leaves: list[QueryNode] = []
+        for child in root.children:
+            leaves.extend(self._flatten_leaves(child))
+        return leaves
+
+    def _build_group_validation(
+        self, status: str, confidences: list[float]
+    ) -> ValidationResult:
+        average_confidence = sum(confidences) / len(confidences)
+        rationale = (
+            "All child nodes were verified."
+            if status == "verified"
+            else "At least one child node requires review."
+        )
+        return ValidationResult(
+            passed=status == "verified",
+            confidence=average_confidence,
+            rationale=rationale,
+        )

@@ -95,6 +95,31 @@ class OpenAICompatibleLLMClient:
         return None
 
 
+@dataclass(slots=True)
+class FallbackLLMClient:
+    clients: list[OpenAICompatibleLLMClient]
+
+    def generate_text(self, system_prompt: str, user_prompt: str) -> str:
+        last_error: Exception | None = None
+        for client in self.clients:
+            try:
+                return client.generate_text(system_prompt, user_prompt)
+            except Exception as exc:
+                last_error = exc
+                continue
+        if last_error is None:
+            raise RuntimeError("No LLM clients were configured.")
+        raise RuntimeError(f"All configured LLM models failed. Last error: {last_error}")
+
+    def generate_json(self, system_prompt: str, user_prompt: str) -> dict[str, Any] | list[Any]:
+        text = self.generate_text(system_prompt, user_prompt)
+        parser = self.clients[0]
+        parsed = parser._parse_json_payload(text)
+        if parsed is None:
+            raise RuntimeError("LLM response did not contain valid JSON.")
+        return parsed
+
+
 def build_llm_client(settings: TreeQASettings) -> LLMClient | None:
     provider = settings.llm_provider.strip().lower()
     if provider in {"", "stub", "none"}:
@@ -104,10 +129,11 @@ def build_llm_client(settings: TreeQASettings) -> LLMClient | None:
             raise ValueError("OPENAI_API_KEY must be set when TREEQA_LLM_PROVIDER=openai.")
         if not settings.llm_model:
             raise ValueError("TREEQA_LLM_MODEL must be set when TREEQA_LLM_PROVIDER=openai.")
-        return OpenAICompatibleLLMClient(
+        return _build_openai_compatible_clients(
             api_key=settings.openai_api_key,
             base_url=settings.llm_base_url,
-            model=settings.llm_model,
+            primary_model=settings.llm_model,
+            fallback_models=settings.llm_fallback_models,
             timeout_seconds=settings.llm_timeout_seconds,
             temperature=settings.llm_temperature,
         )
@@ -125,12 +151,39 @@ def build_llm_client(settings: TreeQASettings) -> LLMClient | None:
             extra_headers["HTTP-Referer"] = settings.openrouter_site_url
         if settings.openrouter_app_name:
             extra_headers["X-Title"] = settings.openrouter_app_name
-        return OpenAICompatibleLLMClient(
+        return _build_openai_compatible_clients(
             api_key=settings.openrouter_api_key,
             base_url=settings.llm_base_url or "https://openrouter.ai/api/v1",
-            model=settings.llm_model,
+            primary_model=settings.llm_model,
+            fallback_models=settings.llm_fallback_models,
             timeout_seconds=settings.llm_timeout_seconds,
             temperature=settings.llm_temperature,
             extra_headers=extra_headers or None,
         )
     raise ValueError(f"Unsupported LLM provider: {settings.llm_provider}")
+
+
+def _build_openai_compatible_clients(
+    api_key: str,
+    base_url: str,
+    primary_model: str,
+    fallback_models: tuple[str, ...],
+    timeout_seconds: int,
+    temperature: float,
+    extra_headers: dict[str, str] | None = None,
+) -> LLMClient:
+    models = [primary_model, *fallback_models]
+    clients = [
+        OpenAICompatibleLLMClient(
+            api_key=api_key,
+            base_url=base_url,
+            model=model,
+            timeout_seconds=timeout_seconds,
+            temperature=temperature,
+            extra_headers=extra_headers,
+        )
+        for model in models
+    ]
+    if len(clients) == 1:
+        return clients[0]
+    return FallbackLLMClient(clients=clients)

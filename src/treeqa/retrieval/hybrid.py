@@ -3,6 +3,7 @@ from __future__ import annotations
 from treeqa.backends.graph import GraphBackend, MemoryGraphBackend
 from treeqa.backends.vector import MemoryVectorBackend, VectorBackend
 from treeqa.models import RetrievedDocument
+from treeqa.retrieval.scoring import rank_documents
 
 
 class HybridRetriever:
@@ -21,4 +22,4 @@ class HybridRetriever:
     def retrieve(self, question: str) -> list[RetrievedDocument]:
         documents = self.vector_backend.search(question, self.top_k)
         documents.extend(self.graph_backend.search(question, self.top_k))
-        return sorted(documents, key=lambda document: document.score, reverse=True)
+        return rank_documents(question, documents, self.top_k)

@@ -1,0 +1,42 @@
+Read `IMPLEMENTATION_HANDOFF.txt` in full before making changes.
+
+Then inspect the repository at:
+- `d:\CompD\sem6Min\RAG-minor-6`
+
+Your task is to continue from the current implementation state, not to redesign the project from scratch.
+
+Instructions
+1. Read the handoff document completely.
+2. Verify the current code still matches that document.
+3. Pay special attention to:
+- `src/treeqa/pipeline.py`
+- `src/treeqa/ingest.py`
+- `src/treeqa/retrieval/scoring.py`
+- `src/treeqa/agents/generator.py`
+- `src/treeqa/diagnostics.py`
+- `data/documents/`
+- `data/graph/`
+- `tests/`
+
+4. After reading, decide the single highest-value next engineering step.
+5. Explain why that step is better than alternative next steps.
+6. Implement it incrementally.
+7. Run validation after changes:
+- `python -m unittest discover -s tests`
+- `python -m treeqa.cli ingest`
+- `python -m treeqa.cli doctor`
+- `python -m treeqa.cli run`
+
+Constraints
+- Preserve the working OpenRouter + local retrieval workflow.
+- Prefer incremental changes over rewrites.
+- Do not remove working functionality unless there is a strong technical reason.
+- Keep the project grounded in the current TreeQA spec.
+
+Recommended immediate focus areas
+- clean up stale generated artifacts under `src/data`
+- improve local ingestion quality and metadata
+- improve answer synthesis quality while preserving grounding
+- strengthen validation and evidence sufficiency rules
+- add evaluation/benchmark capability
+

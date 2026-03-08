@@ -12,20 +12,12 @@ class QueryDecomposer:
     def __init__(self, llm_client: LLMClient | None = None) -> None:
         self.llm_client = llm_client
 
-    def decompose(self, query: str) -> list[QueryNode]:
+    def decompose(self, query: str) -> QueryNode:
         llm_parts = self._decompose_with_llm(query)
         if llm_parts:
-            return [
-                QueryNode(node_id=f"node-{index}", question=part)
-                for index, part in enumerate(llm_parts, start=1)
-            ]
+            return self._build_tree(query, llm_parts)
         parts = self._split_query(query)
-        if len(parts) == 1:
-            return [QueryNode(node_id="root", question=parts[0])]
-        return [
-            QueryNode(node_id=f"node-{index}", question=part)
-            for index, part in enumerate(parts, start=1)
-        ]
+        return self._build_tree(query, parts)
 
     def _split_query(self, query: str) -> list[str]:
         normalized = query.replace(" then ", " and ")
@@ -56,3 +48,17 @@ class QueryDecomposer:
         if not isinstance(candidates, list):
             return []
         return [str(candidate).strip() for candidate in candidates if str(candidate).strip()]
+
+    def _build_tree(self, query: str, parts: list[str]) -> QueryNode:
+        cleaned = [part for part in parts if part]
+        if len(cleaned) <= 1:
+            question = cleaned[0] if cleaned else query.strip()
+            return QueryNode(node_id="root", question=question)
+        return QueryNode(
+            node_id="root",
+            question=query.strip(),
+            children=[
+                QueryNode(node_id=f"node-{index}", question=part)
+                for index, part in enumerate(cleaned, start=1)
+            ],
+        )

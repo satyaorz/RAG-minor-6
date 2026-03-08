@@ -29,10 +29,20 @@ class QueryNode:
     validation: ValidationResult | None = None
     children: list["QueryNode"] = field(default_factory=list)
 
+    @property
+    def is_leaf(self) -> bool:
+        return not self.children
+
+    def iter_nodes(self) -> list["QueryNode"]:
+        nodes = [self]
+        for child in self.children:
+            nodes.extend(child.iter_nodes())
+        return nodes
+
 
 @dataclass(slots=True)
 class PipelineResult:
     query: str
+    root: QueryNode
     nodes: list[QueryNode]
     final_answer: str
-

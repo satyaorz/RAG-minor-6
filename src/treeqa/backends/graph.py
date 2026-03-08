@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from typing import Any, Protocol
 
 from treeqa.config import TreeQASettings
 from treeqa.models import RetrievedDocument
+from treeqa.retrieval.scoring import lexical_score, normalize_text
 
 
 class GraphBackend(Protocol):
@@ -19,19 +22,18 @@ class MemoryGraphBackend:
         }
 
     def search(self, question: str, limit: int) -> list[RetrievedDocument]:
-        question_terms = {term.lower().strip("?,.") for term in question.split() if term}
         results: list[RetrievedDocument] = []
         for source_id, content in self.facts.items():
-            content_terms = {term.lower().strip("?,.") for term in content.split() if term}
-            overlap = len(question_terms & content_terms)
-            if overlap == 0:
+            normalized = normalize_text(content)
+            score = lexical_score(question, normalized)
+            if score <= 0:
                 continue
             results.append(
                 RetrievedDocument(
                     source_id=source_id,
                     source_type="graph",
-                    content=content,
-                    score=overlap / max(len(question_terms), 1),
+                    content=normalized,
+                    score=score,
                 )
             )
         return sorted(results, key=lambda document: document.score, reverse=True)[:limit]
@@ -76,10 +78,55 @@ class Neo4jGraphBackend:
         )
 
 
+class LocalGraphBackend:
+    def __init__(self, index_path: str) -> None:
+        self.index_path = Path(index_path)
+        if not self.index_path.exists():
+            raise RuntimeError(
+                f"Local graph index not found at {self.index_path}. Run `python -m treeqa.cli ingest`."
+            )
+        self.facts = self._load_index()
+
+    def search(self, question: str, limit: int) -> list[RetrievedDocument]:
+        results: list[RetrievedDocument] = []
+        for fact in self.facts:
+            normalized = normalize_text(str(fact["content"]))
+            score = lexical_score(question, normalized)
+            if score <= 0:
+                continue
+            results.append(
+                RetrievedDocument(
+                    source_id=str(fact["source_id"]),
+                    source_type="graph",
+                    content=normalized,
+                    score=score,
+                )
+            )
+        return sorted(results, key=lambda document: document.score, reverse=True)[:limit]
+
+    def _load_index(self) -> list[dict[str, str]]:
+        rows: list[dict[str, str]] = []
+        for line in self.index_path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            payload = json.loads(line)
+            if isinstance(payload, dict):
+                rows.append(payload)
+        return rows
+
+
 def build_graph_backend(settings: TreeQASettings) -> GraphBackend:
     provider = settings.graph_provider.strip().lower()
     if provider in {"", "memory"}:
         return MemoryGraphBackend()
+    if provider == "local":
+        index_path = (
+            settings.resolve_path(settings.local_graph_index_path)
+            if settings.local_graph_index_path
+            else settings.resolved_data_dir / "index" / "graph_facts.jsonl"
+        )
+        return LocalGraphBackend(index_path=str(index_path))
     if provider == "neo4j":
         if not settings.graph_store_url:
             raise ValueError("GRAPH_STORE_URL must be set when TREEQA_GRAPH_PROVIDER=neo4j.")
