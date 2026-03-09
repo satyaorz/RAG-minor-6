@@ -4,6 +4,7 @@ from dataclasses import asdict, dataclass
 import json
 from pathlib import Path
 import re
+import time
 
 from treeqa.config import TreeQASettings
 from treeqa.retrieval.scoring import normalize_text
@@ -21,6 +22,10 @@ class IngestReport:
 class IndexedChunk:
     source_id: str
     source_path: str
+    title: str
+    section: str
+    chunk_index: int
+    ingested_at: str
     content: str
 
 
@@ -28,6 +33,7 @@ class IndexedChunk:
 class IndexedFact:
     source_id: str
     source_path: str
+    ingested_at: str
     content: str
 
 
@@ -68,18 +74,27 @@ def _build_document_chunks(documents_dir: Path) -> list[IndexedChunk]:
     if not documents_dir.exists():
         return []
     chunks: list[IndexedChunk] = []
+    ingested_at = _iso_now()
     for path in sorted(documents_dir.rglob("*")):
         if not path.is_file() or path.suffix.lower() not in {".md", ".txt", ".json"}:
             continue
-        text = _read_document(path)
-        for index, chunk in enumerate(_chunk_text(text), start=1):
-            chunks.append(
-                IndexedChunk(
-                    source_id=f"{path.stem}-chunk-{index}",
-                    source_path=str(path),
-                    content=chunk,
+        title = _extract_title(path)
+        sections = _split_into_sections(path)
+        chunk_index = 0
+        for section_name, section_text in sections:
+            for chunk in _chunk_text(section_text):
+                chunk_index += 1
+                chunks.append(
+                    IndexedChunk(
+                        source_id=f"{path.stem}-chunk-{chunk_index}",
+                        source_path=str(path),
+                        title=title,
+                        section=section_name,
+                        chunk_index=chunk_index,
+                        ingested_at=ingested_at,
+                        content=chunk,
+                    )
                 )
-            )
     return chunks
 
 
@@ -87,6 +102,7 @@ def _build_graph_facts(graph_dir: Path) -> list[IndexedFact]:
     if not graph_dir.exists():
         return []
     facts: list[IndexedFact] = []
+    ingested_at = _iso_now()
     for path in sorted(graph_dir.rglob("*")):
         if not path.is_file():
             continue
@@ -100,7 +116,7 @@ def _build_graph_facts(graph_dir: Path) -> list[IndexedFact]:
                 if not content:
                     continue
                 source_id = str(payload.get("source_id") or f"{path.stem}-fact-{index}")
-                facts.append(IndexedFact(source_id=source_id, source_path=str(path), content=content))
+                facts.append(IndexedFact(source_id=source_id, source_path=str(path), ingested_at=ingested_at, content=content))
         elif path.suffix.lower() in {".md", ".txt"}:
             for index, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
                 content = line.strip("- ").strip()
@@ -110,6 +126,7 @@ def _build_graph_facts(graph_dir: Path) -> list[IndexedFact]:
                     IndexedFact(
                         source_id=f"{path.stem}-fact-{index}",
                         source_path=str(path),
+                        ingested_at=ingested_at,
                         content=content,
                     )
                 )
@@ -132,24 +149,71 @@ def _read_document(path: Path) -> str:
     return normalize_text(text)
 
 
-def _chunk_text(text: str, max_chars: int = 220) -> list[str]:
+def _extract_title(path: Path) -> str:
+    """Return the first H1 heading found in a markdown file, else the stem."""
+    if path.suffix.lower() == ".md":
+        for line in path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if line.startswith("# "):
+                return line[2:].strip()
+    return path.stem.replace("_", " ").title()
+
+
+def _split_into_sections(path: Path) -> list[tuple[str, str]]:
+    """Split a document into (section_heading, section_text) pairs.
+
+    Non-markdown files are treated as a single unnamed section.
+    """
+    if path.suffix.lower() not in {".md", ".txt"}:
+        return [("", _read_document(path))]
+
+    raw = path.read_text(encoding="utf-8")
+    heading_pattern = re.compile(r"^(#{1,3})\s+(.+)$", re.MULTILINE)
+    positions = [(m.start(), m.group(2).strip()) for m in heading_pattern.finditer(raw)]
+
+    if not positions:
+        return [("", normalize_text(raw))]
+
+    sections: list[tuple[str, str]] = []
+    for i, (start, heading) in enumerate(positions):
+        end = positions[i + 1][0] if i + 1 < len(positions) else len(raw)
+        body = raw[start:end]
+        # Remove the heading line itself from the body text
+        body = re.sub(r"^#{1,3}\s+.+\n?", "", body, count=1)
+        normalized = normalize_text(body)
+        if normalized:
+            sections.append((heading, normalized))
+    return sections or [("", normalize_text(raw))]
+
+
+def _chunk_text(text: str, max_chars: int = 300, overlap_sentences: int = 1) -> list[str]:
+    """Split text into sentence-boundary chunks with optional sentence overlap."""
     normalized = normalize_text(text)
     if not normalized:
         return []
     sentences = re.split(r"(?<=[.!?])\s+", normalized)
     chunks: list[str] = []
-    current = ""
+    current_sentences: list[str] = []
+    current_len = 0
+
     for sentence in sentences:
-        candidate = f"{current} {sentence}".strip() if current else sentence
-        if len(candidate) <= max_chars:
-            current = candidate
-            continue
-        if current:
-            chunks.append(current)
-        current = sentence
-    if current:
-        chunks.append(current)
+        candidate_len = current_len + (1 if current_len else 0) + len(sentence)
+        if candidate_len <= max_chars or not current_sentences:
+            current_sentences.append(sentence)
+            current_len = candidate_len
+        else:
+            chunks.append(" ".join(current_sentences))
+            # Keep last `overlap_sentences` sentences for context continuity
+            current_sentences = current_sentences[-overlap_sentences:] + [sentence]
+            current_len = sum(len(s) for s in current_sentences) + len(current_sentences) - 1
+
+    if current_sentences:
+        chunks.append(" ".join(current_sentences))
     return chunks
+
+
+def _iso_now() -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
 
 def _write_jsonl(path: Path, rows: list[dict[str, str]]) -> None:

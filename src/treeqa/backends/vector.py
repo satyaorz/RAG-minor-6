@@ -85,18 +85,25 @@ class LocalVectorBackend:
         self.documents = self._load_index()
 
     def search(self, question: str, limit: int) -> list[RetrievedDocument]:
-        question_terms = {term.lower().strip("?,.") for term in question.split() if term}
         results: list[RetrievedDocument] = []
         for record in self.documents:
-            normalized = normalize_text(str(record["content"]))
-            score = lexical_score(question, normalized)
+            content = normalize_text(str(record.get("content", "")))
+            # Enrich scoring context with section heading and title when available
+            section = str(record.get("section", "")).strip()
+            title = str(record.get("title", "")).strip()
+            scoring_text = " ".join(filter(None, [title, section, content]))
+            score = lexical_score(question, scoring_text)
             if score <= 0:
                 continue
+            # Build an informative source_id that includes section context
+            source_id = str(record.get("source_id", ""))
+            if section:
+                source_id = f"{source_id} [{section}]"
             results.append(
                 RetrievedDocument(
-                    source_id=str(record["source_id"]),
+                    source_id=source_id,
                     source_type="vector",
-                    content=normalized,
+                    content=content,
                     score=score,
                 )
             )

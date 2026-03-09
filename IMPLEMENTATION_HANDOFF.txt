@@ -1,0 +1,774 @@
+PROJECT TREEQA: IMPLEMENTATION HANDOFF
+Last updated: 2026-03-09 (session 2)
+
+PURPOSE OF THIS DOCUMENT
+This document is a detailed handoff for the current TreeQA codebase. It is intended for:
+- the original author
+- another engineer continuing the work
+- another Codex-style coding agent that needs strong context before making changes
+
+The goal is to explain what has already been implemented, how the current system works, what each file is responsible for, how to run and validate the project, what is still weak, and what the next best engineering steps are.
+
+======================================================================
+1. PROJECT GOAL
+======================================================================
+
+This repository is building a hallucination-aware RAG system for multi-hop QA.
+
+The intended system behavior is:
+- decompose a user query into smaller verifiable sub-questions
+- retrieve evidence from both unstructured and structured sources
+- answer each sub-question using retrieved evidence only
+- validate whether the sub-answer is actually supported
+- retry or refine when support is weak
+- aggregate the verified sub-answers into a final answer
+- expose the logic tree in a UI so the user can inspect how the answer was formed
+
+Current implementation status:
+- The project is no longer just a bare scaffold.
+- It now has a working CLI, local ingestion pipeline, local hybrid retrieval path, OpenRouter LLM support, diagnostics, a tree-shaped pipeline state, and a basic Streamlit UI.
+- It is still early-stage and not yet production-grade in retrieval quality, orchestration sophistication, or evaluation rigor.
+
+======================================================================
+2. CURRENT HIGH-LEVEL ARCHITECTURE
+======================================================================
+
+The current architecture has these major layers:
+
+1. Configuration and environment loading
+- Reads environment variables from a repo-local .env automatically.
+- Supports OpenAI-compatible LLM providers and several retrieval provider modes.
+
+2. Backends
+- LLM backend:
+  - supports OpenAI-compatible chat APIs
+  - supports OpenRouter explicitly
+  - supports model fallback lists
+- Vector backend:
+  - memory mode
+  - local filesystem index mode
+  - Qdrant mode
+- Graph backend:
+  - memory mode
+  - local filesystem index mode
+  - Neo4j mode
+
+3. Agents
+- Query decomposition
+- Answer generation
+- Validation
+- Query correction/refinement
+
+4. Retrieval
+- Hybrid retriever combining vector and graph results
+- Local lexical ranking and snippet extraction helpers
+
+5. Pipeline
+- Tree-based execution
+- Leaf nodes do retrieval/generation/validation
+- Parent nodes aggregate child answers and child confidence
+
+6. Diagnostics and CLI
+- ingest
+- doctor
+- run
+
+7. UI
+- Streamlit app rendering final answer and nested logic tree cards
+- FastAPI + SPA web UI served at GET / with interactive logic tree
+
+======================================================================
+3. CURRENT RUNTIME FLOW
+======================================================================
+
+Typical local flow:
+
+1. Create/update .env
+2. Put files under:
+- data/documents/
+- data/graph/
+
+3. Build local indices:
+- python -m treeqa.cli ingest
+
+4. Check runtime setup:
+- python -m treeqa.cli doctor
+- python -m treeqa.cli doctor --live-llm
+
+5. Run the pipeline:
+- python -m treeqa.cli run
+
+6. Or open the Streamlit UI:
+- streamlit run src/treeqa/ui/streamlit_app.py
+
+7. Or start the FastAPI web server (serves an SPA at http://localhost:8000):
+- pip install -e ".[api]"
+- PYTHONPATH=src uvicorn treeqa.api.app:app --reload --port 8000
+
+Detailed execution path of "run":
+
+1. TreeQAPipeline is constructed.
+2. Settings are loaded from env and .env.
+3. The pipeline builds:
+- LLM client
+- vector backend
+- graph backend
+- decomposer
+- validator
+- corrector
+- generator
+
+4. The query is decomposed into a root node with child leaf nodes.
+5. Each leaf node:
+- retrieves documents
+- generates an answer
+- validates support
+- retries if needed
+
+6. Parent/root nodes:
+- aggregate child answers
+- aggregate child confidence
+- derive verified/needs_review status
+
+7. Final output is serialized as JSON with:
+- query
+- root tree
+- flattened leaf nodes
+- final answer
+
+======================================================================
+4. CURRENT PROVIDER STRATEGY
+======================================================================
+
+LLM:
+- The project currently supports OpenRouter as the practical live path.
+- The current recommended primary free model is:
+  - arcee-ai/trinity-mini:free
+- Current fallback recommendation:
+  - nvidia/nemotron-3-nano-30b-a3b:free
+  - arcee-ai/trinity-large-preview:free
+  - qwen/qwen3-4b:free
+  - openrouter/free
+
+Retrieval:
+- For real development right now, the preferred mode is:
+  - TREEQA_VECTOR_PROVIDER=local
+  - TREEQA_GRAPH_PROVIDER=local
+
+Reason:
+- It uses real project files under data/
+- It avoids external DB setup while still giving a realistic retrieval workflow
+- It is much more useful than pure memory stubs for prompt and logic iteration
+
+External retrieval providers exist in code, but are not the best immediate next step:
+- qdrant
+- neo4j
+
+======================================================================
+5. CURRENT .ENV EXPECTATION
+======================================================================
+
+Recommended current local .env shape:
+
+TREEQA_LLM_PROVIDER=openrouter
+TREEQA_LLM_BASE_URL=https://openrouter.ai/api/v1
+TREEQA_LLM_MODEL=arcee-ai/trinity-mini:free
+TREEQA_LLM_FALLBACK_MODELS=nvidia/nemotron-3-nano-30b-a3b:free,arcee-ai/trinity-large-preview:free,qwen/qwen3-4b:free,openrouter/free
+OPENROUTER_API_KEY=YOUR_KEY
+TREEQA_OPENROUTER_SITE_URL=http://localhost
+TREEQA_OPENROUTER_APP_NAME=TreeQA
+
+TREEQA_VECTOR_PROVIDER=local
+TREEQA_GRAPH_PROVIDER=local
+
+TREEQA_DATA_DIR=data
+TREEQA_MAX_RETRIES=2
+TREEQA_RETRIEVAL_TOP_K=3
+TREEQA_LLM_TIMEOUT_SECONDS=30
+TREEQA_LLM_TEMPERATURE=0.0
+
+Notes:
+- The code now resolves TREEQA_DATA_DIR relative to the repository root, not the shell cwd.
+- This was fixed because running from src/ previously caused data/ to resolve to src/data by accident.
+
+Security note:
+- An OpenRouter key was printed in a prior terminal session.
+- That key should be rotated outside the repo.
+
+======================================================================
+6. IMPORTANT IMPLEMENTED BEHAVIOR
+======================================================================
+
+6.1 Tree structure
+- The system no longer returns only a flat list of sub-questions.
+- The decomposer returns a root QueryNode.
+- Multi-part queries become root + children.
+- Single-part queries use the root as the leaf.
+
+6.2 Local ingestion
+- There is now a local ingestion step.
+- It reads source documents from data/documents.
+- It reads structured facts from data/graph.
+- It writes JSONL indices under data/index.
+
+6.3 Local hybrid retrieval
+- The pipeline can now retrieve from local indexed files.
+- It combines vector-like and graph-like local results.
+- Results are ranked with lexical scoring and deduped.
+
+6.4 LLM diagnostics
+- The CLI can now validate config and provider wiring.
+- doctor checks provider setup.
+- doctor --live-llm verifies an actual LLM round-trip.
+
+6.5 Model fallback
+- The LLM client supports a fallback model list.
+- If one configured OpenRouter free model fails, the next one can be tried.
+
+6.6 Output quality improvements
+- Retrieval now uses lexical ranking, normalized text, and snippet extraction.
+- Ingestion now creates smaller chunks than before.
+- Final output is more concise and source-labeled than earlier versions.
+
+======================================================================
+7. CURRENT LIMITATIONS
+======================================================================
+
+This project is working, but several areas remain weak or unfinished.
+
+7.1 Retrieval is still shallow
+- The local retrieval path is lexical, not embedding-based.
+- It does not use semantic search or learned reranking.
+- It is only a practical bridge before external vector infrastructure.
+
+7.2 LLM answers are still somewhat extractive
+- Responses are better than before, but still often mirror source wording.
+- Final synthesis is concise, but not yet strong enough for polished user-facing output.
+
+7.3 Validation remains basic
+- The validator can use an LLM judge or lexical heuristics.
+- It is not yet a rigorous factuality pipeline.
+- There is no NLI model, calibrated scoring, or strong judge schema enforcement.
+
+7.4 No formal evaluation harness yet
+- No dataset runner for HotpotQA / 2WikiMultiHopQA
+- No RAGAS or TruLens integration
+- No regression dataset
+
+7.5 Workflow is tree-recursive, not a real LangGraph graph yet
+- The current orchestration lives in Python control flow.
+- The spec calls for agentic or graph-based orchestration.
+- There is a placeholder workflow factory but no actual LangGraph integration yet.
+
+7.6 The UI is still basic
+- It renders nested cards and raw JSON.
+- It does not yet provide a stronger interactive reasoning explorer or graph visualization library integration.
+
+======================================================================
+8. FILE-BY-FILE ROLE EXPLANATION
+======================================================================
+
+ROOT FILES
+
+project_spec.md
+- Original project scope document.
+- Describes the TreeQA goal, approach, roadmap, and intended future direction.
+
+README.md
+- Human-readable setup and workflow instructions.
+- Documents provider configuration, .env use, ingest/doctor/run commands, and high-level usage.
+
+pyproject.toml
+- Packaging and dependencies.
+- Defines editable install behavior and optional provider dependencies.
+
+.env.example
+- Template for local runtime configuration.
+- Shows recommended OpenRouter-first setup and provider variables.
+
+.gitignore
+- Ignores virtualenvs, caches, build artifacts, and .env.
+
+DATA FOLDER
+
+data/documents/treeqa_overview.md
+- Sample unstructured source text.
+- Used by local ingestion to create vector-style evidence chunks.
+
+data/graph/facts.jsonl
+- Sample structured fact source.
+- Used by local ingestion to create graph-style evidence rows.
+
+data/index/vector_index.jsonl
+- Generated local vector-style index.
+- Output of the ingest step.
+- This should be regenerated after source changes.
+
+data/index/graph_facts.jsonl
+- Generated local graph-style index.
+- Output of the ingest step.
+
+IMPORTANT NOTE ABOUT src/data/index
+- There are stale files under src/data/index from an older path-resolution bug.
+- These are accidental artifacts from when data/ resolved relative to src/.
+- The actual intended runtime path is the repo-level data/index.
+- A cleanup pass should remove src/data if it still exists and confirm no code depends on it.
+
+SRC PACKAGE
+
+src/treeqa/__init__.py
+- Package entry export.
+- Exposes TreeQAPipeline.
+
+src/treeqa/config.py
+- Loads .env.
+- Parses environment variables into TreeQASettings.
+- Resolves relative paths against the repo root.
+- This file is central to runtime configuration correctness.
+
+src/treeqa/models.py
+- Core dataclasses:
+  - RetrievedDocument
+  - ValidationResult
+  - QueryNode
+  - PipelineResult
+- Defines the in-memory structure of pipeline execution.
+
+src/treeqa/state.py
+- Defines WorkflowState.
+- Holds query, root node, flattened nodes, and final answer during execution.
+
+src/treeqa/pipeline.py
+- Main pipeline orchestration.
+- Builds providers and agents from settings.
+- Executes the tree.
+- Resolves leaf nodes.
+- Aggregates parent/root state and validation.
+
+src/treeqa/workflow.py
+- Placeholder workflow factory.
+- Exists so a real LangGraph implementation can replace the simple pipeline later.
+
+src/treeqa/eval.py
+- Local benchmark runner.
+- Loads a JSONL dataset of {question, answer} pairs.
+- Runs them through the full pipeline.
+- Computes Exact Match and Token F1 per HotpotQA convention.
+- Writes timestamped results JSONL to the output directory.
+- Entry point: python -m treeqa.eval --dataset PATH [--limit N] [--output-dir PATH]
+
+src/treeqa/cli.py
+- CLI entrypoint.
+- Supports:
+  - run
+  - doctor
+  - ingest
+
+src/treeqa/diagnostics.py
+- Provider/config health checks.
+- Verifies configured LLM/vector/graph backends.
+- Supports live LLM probing.
+- Detects empty local indices.
+
+src/treeqa/ingest.py
+- Builds local retrieval indices from data/.
+- Reads documents and graph facts.
+- Chunks document content.
+- Writes JSONL files under data/index.
+
+AGENTS LAYER
+
+src/treeqa/agents/__init__.py
+- Re-exports agent classes.
+
+src/treeqa/agents/decomposer.py
+- Query decomposition agent.
+- Uses LLM JSON output when available.
+- Falls back to rule-based splitting.
+- Returns a root QueryNode.
+
+src/treeqa/agents/generator.py
+- Answer generation and final synthesis.
+- Uses LLM when available.
+- Falls back to evidence extraction.
+- Adds source references.
+- Performs basic cleanup and source stripping for aggregation.
+
+src/treeqa/agents/validator.py
+- Validation agent.
+- Uses an LLM judge if available.
+- Falls back to lexical overlap heuristics.
+- Produces pass/fail, confidence, rationale.
+
+src/treeqa/agents/corrector.py
+- Query rewrite/correction agent.
+- Uses the LLM if available.
+- Falls back to a simple rewritten query with factuality guidance.
+
+BACKENDS
+
+src/treeqa/backends/__init__.py
+- Backend factory exports.
+
+src/treeqa/backends/llm.py
+- OpenAI-compatible LLM client.
+- OpenRouter support.
+- Fallback model client wrapper.
+- JSON extraction from LLM text responses.
+
+src/treeqa/backends/vector.py
+- Vector backend interface and implementations:
+  - MemoryVectorBackend
+  - LocalVectorBackend
+  - QdrantVectorBackend
+
+src/treeqa/backends/graph.py
+- Graph backend interface and implementations:
+  - MemoryGraphBackend
+  - LocalGraphBackend
+  - Neo4jGraphBackend
+
+RETRIEVAL
+
+src/treeqa/retrieval/__init__.py
+- Lazy export for HybridRetriever.
+- Implemented this way to avoid package import cycles.
+
+src/treeqa/retrieval/hybrid.py
+- Combines vector and graph retrieval.
+- Calls both backends and ranks merged results.
+
+src/treeqa/retrieval/scoring.py
+- Text normalization
+- tokenization
+- lexical scoring
+- snippet extraction
+- merged document ranking
+- This file is now one of the main quality-control points for retrieval behavior.
+
+UI
+
+src/treeqa/ui/__init__.py
+- UI package marker.
+
+src/treeqa/ui/streamlit_app.py
+- Streamlit UI.
+- Runs the pipeline.
+- Displays final answer.
+- Renders a nested logic-tree view.
+- Shows raw JSON payload too.
+
+src/treeqa/ui/index.html
+- Vanilla HTML5/CSS3/JS single-page application (SPA).
+- Served by the FastAPI backend at GET /.
+- Features: query textarea, Ctrl+Enter submit, animated spinner, stats bar.
+- Stats bar shows: Nodes · Verified · Review · Avg Confidence.
+- Renders an interactive logic tree via recursive renderNode() function.
+- Each node card displays: status badge, confidence bar, answer, rationale, expandable evidence.
+- Color-coded by status: green (verified), amber (needs_review), gray (pending).
+- XSS-safe via esc() helper escaping all dynamic text.
+- No build step required; pure vanilla JS.
+
+API
+
+src/treeqa/api/__init__.py
+- API package marker.
+
+src/treeqa/api/app.py
+- FastAPI backend serving the SPA and exposing the pipeline as a REST API.
+- GET / → serves src/treeqa/ui/index.html (HTMLResponse).
+- POST /api/run → accepts {"query": "..."}, runs TreeQAPipeline, returns asdict(result).
+- GET /api/health → {"status": "ok"}.
+- GET /api/docs → Swagger UI.
+- Adds CORS middleware (allow_origins=["*"]) so the SPA can call the API.
+- Pydantic v2 RunRequest with query_must_not_be_empty validator.
+- Each request constructs a fresh TreeQAPipeline (settings auto-loaded from .env).
+- Start: pip install -e ".[api]" && PYTHONPATH=src uvicorn treeqa.api.app:app --reload --port 8000
+
+TESTS
+
+tests/conftest.py
+- Adds src/ to sys.path for test execution.
+
+tests/test_pipeline.py
+- Tree/pipeline integration tests — all fully offline (no live LLM or network calls).
+- 8 tests using stub helpers: _stub_retriever, _stub_validator, _stub_generator, _stub_corrector.
+- _make_pipeline(**overrides): factory that builds TreeQAPipeline with all stubs; accepts per-test overrides.
+- Tests cover: basic run shape, verified/needs_review status, multi-part decomposition,
+  root-as-leaf, retrieve count, attempt count, corrector called on retry.
+- Runs in ~7ms.
+
+tests/test_retriever.py
+- Hybrid retriever baseline behavior tests.
+
+tests/test_adapters.py
+- Backend adapter construction tests.
+- Includes OpenRouter path and fallback model client tests.
+
+tests/test_config.py
+- .env loading and path resolution tests.
+
+tests/test_diagnostics.py
+- doctor/diagnostics tests.
+- Includes missing local index and empty local index cases.
+
+tests/test_generator.py
+- Generator fallback behavior tests.
+- Source block handling and text cleanup tests.
+
+tests/test_ingest.py
+- Ingestion and local index usability tests.
+
+tests/test_scoring.py
+- Normalization, snippet selection, and deduped ranking tests.
+
+======================================================================
+9. COMMANDS THAT CURRENTLY MATTER
+======================================================================
+
+Install (core):
+- pip install -e .
+
+Install (with FastAPI web server support):
+- pip install -e ".[api]"
+
+Build local indices:
+- python -m treeqa.cli ingest
+
+Check config:
+- python -m treeqa.cli doctor
+
+Check live model:
+- python -m treeqa.cli doctor --live-llm
+
+Run pipeline (CLI):
+- python -m treeqa.cli run
+
+Run Streamlit UI:
+- PYTHONPATH=src streamlit run src/treeqa/ui/streamlit_app.py
+
+Run FastAPI web server:
+- PYTHONPATH=src uvicorn treeqa.api.app:app --reload --port 8000
+- Then open http://localhost:8000 in a browser.
+
+Run tests:
+- python -m pytest tests/ -q
+- python -m unittest discover -s tests
+
+======================================================================
+10. WHAT HAS BEEN VERIFIED RECENTLY
+======================================================================
+
+Session 2026-03-09 (session 2) changes — mocked test_pipeline.py + FastAPI + SPA:
+
+a. test_pipeline.py — completely rewritten with offline stubs
+- Added stub factory functions: _stub_retriever(), _stub_validator(), _stub_generator(), _stub_corrector().
+- _make_pipeline(**overrides) constructs TreeQAPipeline with all stubs; any component can be overridden per test.
+- _offline_settings() returns TreeQASettings(llm_provider="stub", vector_provider="memory", graph_provider="memory").
+- 8 tests covering: result shape, verified/needs_review status, multi-part decomposition,
+  root-as-leaf behavior, retrieve call count, attempt count, corrector called on retry.
+- All 8 tests pass offline in ~7ms. No live LLM or network calls.
+
+b. FastAPI backend — src/treeqa/api/app.py
+- New module implementing a production-ready FastAPI backend.
+- GET / → serves the SPA (src/treeqa/ui/index.html).
+- POST /api/run → runs pipeline, returns asdict(PipelineResult) as JSON.
+- GET /api/health → {"status": "ok"}.
+- CORS middleware added (allow_origins=["*"]).
+- Pydantic v2 RunRequest model with query_must_not_be_empty validator.
+- Verified: "from treeqa.api.app import app" → "FastAPI app loaded: TreeQA 0.1.0".
+- Live health check confirmed: curl http://localhost:8001/api/health → {"status":"ok"}.
+
+c. SPA frontend — src/treeqa/ui/index.html
+- New 18,645-byte vanilla HTML/CSS/JS single-page application.
+- Indigo gradient header, card-based layout, CSS custom properties for theming.
+- Query textarea + "Run ▶" button, Ctrl+Enter shortcut.
+- Animated spinner during pipeline execution.
+- Stats bar: Nodes · Verified · Review · Avg Confidence.
+- Final answer card (green left border).
+- Recursive renderNode() builds DOM from JSON response tree.
+- Each node card: status badge (✓ verified / ⚠ needs_review), confidence bar, answer, rationale,
+  expandable evidence section with source tags and relevance scores.
+- XSS-safe via esc() escaping all dynamic text inserted into innerHTML.
+- No build step; no external dependencies.
+
+d. pyproject.toml — added `api` optional dep group
+- Added:
+  [project.optional-dependencies]
+  api = ["fastapi>=0.110,<1", "uvicorn[standard]>=0.29,<1"]
+- Install with: pip install -e ".[api]"
+
+e. Test run results (2026-03-09 session 2)
+- 46 offline tests pass (38 from session 1 + 8 new pipeline tests).
+- Full suite runs in ~14ms.
+- PYTHONPATH=src python -m pytest tests/ -q → "46 passed in 0.06s"
+
+Session 2026-03-09 changes:
+
+a. Corpus expansion
+- Added four new source documents under data/documents:
+  - multi_hop_qa.md  (HotpotQA, 2WikiMultiHopQA, MuSiQue, retrieval strategies, eval metrics)
+  - rag_systems.md   (RAG overview, iterative/self/corrective/modular RAG, retrieval methods, hallucination)
+  - langgraph_orchestration.md (LangGraph, state/nodes/edges, checkpointing, ReAct, plan-execute, reflection)
+  - hallucination_detection.md (types of hallucination, NLI, RAGAS, TruLens, validation signals)
+- Expanded data/graph/facts.jsonl from 3 to 20 structured facts.
+- After re-ingestion: 55 vector chunks (was ~5), 20 graph facts.
+
+b. Local ingestion improvements (src/treeqa/ingest.py)
+- IndexedChunk now carries: title, section, chunk_index, ingested_at fields.
+- Section-aware chunking via _split_into_sections(): each H1/H2/H3 section is chunked independently.
+- _extract_title() reads the first # heading; falls back to filename stem.
+- _chunk_text() now supports sentence overlap (overlap_sentences=1) to preserve cross-sentence context.
+- max_chars raised from 220 to 300.
+
+c. LocalVectorBackend scoring improvement (src/treeqa/backends/vector.py)
+- Scoring now uses enriched text (title + section + content) instead of content alone.
+- source_id now includes section name in brackets for traceability.
+
+d. Validator strengthening (src/treeqa/agents/validator.py)
+- Added _MIN_EVIDENCE_COUNT=2 guard: answers with fewer than 2 retrieved docs fail immediately.
+- Raised _MIN_OVERLAP_RATIO from 0.30 to 0.35 for heuristic validation.
+- LLM judge prompt rewritten for stricter schema enforcement (explicit field list, no extra keys).
+- confidence is now clamped to [0.0, 1.0] and rationale is never left empty.
+
+e. Generator prompt improvement (src/treeqa/agents/generator.py)
+- System prompt tightened: "Answer ONLY using facts explicitly stated in the supplied evidence."
+- Explicit instruction: "Do NOT introduce information absent from the evidence."
+- Reduced to 2–3 sentences (was 2–4) for tighter sub-answers.
+- Context format changed from source_type:source_id to source_type|source_id to avoid YAML-like colons in f-strings.
+
+f. Benchmark / evaluation module (src/treeqa/eval.py)
+- New module implementing a local benchmark runner.
+- Follows HotpotQA evaluation convention: normalizes articles, punctuation, whitespace.
+- Computes Exact Match (EM) and Token F1 per item.
+- Writes timestamped results JSONL under data/benchmark/.
+- CLI: python -m treeqa.eval --dataset data/benchmark/sample.jsonl [--limit N] [--output-dir PATH]
+- Sample dataset: data/benchmark/sample.jsonl (10 domain questions with gold answers).
+
+g. Stale artifact removal
+- Deleted src/data/ (contained stale vector_index.jsonl and graph_facts.jsonl from old path bug).
+
+h. New tests added
+- tests/test_eval.py: 9 tests covering EM, F1, dataset loading, runner output, error handling.
+- tests/test_ingest.py: 2 new tests for chunk metadata fields and section-aware chunking.
+
+i. Test run results (2026-03-09)
+- 38 offline tests pass (test_scoring, test_config, test_generator, test_ingest, test_eval,
+  test_retriever, test_adapters, test_diagnostics).
+- test_pipeline.py tests require a live OpenRouter call; run separately with a real API key.
+- doctor passes with ok:true on all three checks.
+
+Recent verified behavior:
+- ingest works: 55 vector chunks + 20 graph facts produced from expanded corpus
+- doctor passes: llm/vector/graph all ok:true
+- all 38 offline unit tests pass
+
+======================================================================
+11. MOST IMPORTANT CURRENT KNOWN ISSUES
+======================================================================
+
+1. Retrieval is still lexical, not semantic
+- Scoring uses BM25-style token overlap, not embedding similarity.
+- Works well for domain-specific queries; fails on paraphrase or vocabulary mismatch.
+
+2. Each API request reconstructs the full pipeline
+- src/treeqa/api/app.py calls TreeQAPipeline() per request.
+- This reloads local index files from disk on every request.
+- Quick fix: move pipeline construction to module startup with a module-level singleton.
+
+3. The corpus is 5 documents from one domain
+- Multi-hop reasoning quality is still limited by evidence breadth.
+- HotpotQA / 2WikiMultiHopQA integration would give meaningful benchmark numbers.
+
+4. Validation still purely lexical when LLM is stubbed
+- Heuristic validator relies on token overlap, which is noisy.
+- NLI model (e.g., cross-encoder) would give a stronger factuality signal.
+
+5. RAGAS / TruLens integration not yet done
+- Local benchmark runner measures EM and F1 against local gold labels.
+- RAGAS faithfulness / context recall is not yet computed.
+
+6. No LangGraph integration yet
+- Orchestration is still Python control flow.
+- workflow.py remains a placeholder.
+
+7. API key visible in terminal history
+- .env has a real OpenRouter key (sk-or-v1-...).
+- This key should be rotated.
+
+======================================================================
+12. RECOMMENDED NEXT STEPS FROM THIS EXACT STATE
+======================================================================
+
+These are the best next engineering steps in order.
+
+1. Singleton pipeline in FastAPI
+- Move TreeQAPipeline construction to module startup:
+    _pipeline: TreeQAPipeline | None = None
+    @app.on_event("startup")
+    def _startup(): global _pipeline; _pipeline = TreeQAPipeline()
+- Then reuse _pipeline per request instead of rebuilding.
+- This eliminates per-request disk I/O for loading index files.
+- Effort: Tiny (1-2h)
+
+2. Add semantic retrieval
+- Integrate sentence-transformers or a local embedding model for vector search.
+- Replace lexical scoring in LocalVectorBackend with cosine similarity on embeddings.
+- Saves retrieved chunks to a FAISS or SQLite+vec index.
+- Effort: Medium (3-5 days)
+
+3. Run the benchmark with sample.jsonl
+- Run: python -m treeqa.eval --dataset data/benchmark/sample.jsonl
+- Establish a EM/F1 baseline on local questions.
+- Effort: Tiny (already runnable — just needs a live key)
+
+4. Integrate HotpotQA devset
+- Download the distractor dev set (JSON) and convert to JSONL for the eval runner.
+- Run python -m treeqa.eval --dataset data/benchmark/hotpotqa_dev.jsonl --limit 100
+- Gives a meaningful multi-hop retrieval baseline.
+- Effort: Small (1 day)
+
+5. Replace recursive pipeline with a LangGraph workflow
+- Define nodes: decompose -> retrieve -> generate -> validate -> correct (conditional loop).
+- Replace src/treeqa/workflow.py placeholder with a real CompiledGraph.
+- This is the largest architectural step toward the spec's intended design.
+- Effort: Large (>1 week)
+
+6. Add NLI-based validation
+- Use a cross-encoder (e.g., cross-encoder/nli-deberta-v3-base) as a faithfulness signal.
+- Add as a second validation path alongside the LLM judge.
+- Effort: Medium (3-5 days)
+
+======================================================================
+13. BOTTOM LINE
+======================================================================
+
+This repository now has:
+- working runtime configuration
+- OpenRouter-backed LLM execution
+- local file-backed ingestion with section-aware chunking and metadata
+- local hybrid retrieval with section/title-enriched scoring
+- tree-based multi-step pipeline execution
+- stricter grounding-enforcing generator and validator
+- diagnostics and a full offline test suite (46 tests, ~14ms)
+- a local benchmark runner (EM + Token F1) with sample dataset
+- coverage of domain documents: RAG, multi-hop QA, LangGraph, hallucination
+- a FastAPI backend (src/treeqa/api/app.py) serving the pipeline as a REST API
+- a vanilla SPA frontend (src/treeqa/ui/index.html) with interactive logic tree visualization
+
+It does NOT yet have:
+- semantic (embedding-based) retrieval
+- NLI-based validation
+- real multi-hop benchmark dataset integration (HotpotQA / 2WikiMultiHopQA)
+- full LangGraph-style graph orchestration (workflow.py is still placeholder)
+- singleton pipeline in FastAPI (currently rebuilds per request)
+
+The project is past the scaffold and functional-prototype phases.
+It now has a working full-stack web interface: FastAPI + SPA that renders the logic tree.
+It is ready for semantic retrieval and real benchmark dataset integration.
+
+Start the web server:
+  pip install -e ".[api]"
+  PYTHONPATH=src uvicorn treeqa.api.app:app --reload --port 8000
+  # Open http://localhost:8000
+

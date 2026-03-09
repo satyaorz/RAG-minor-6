@@ -1,3 +1,20 @@
-{"source_id":"fact-tree-1","content":"TreeQA uses logic-tree reasoning to verify intermediate steps."}
-{"source_id":"fact-tree-2","content":"Hybrid retrieval combines vector evidence with graph-backed factual support."}
-{"source_id":"fact-tree-3","content":"Validation can use an LLM judge or another factuality signal before final answer generation."}
+{"source_id":"fact-tree-1","content":"TreeQA uses logic-tree reasoning to verify intermediate steps before producing a final answer."}
+{"source_id":"fact-tree-2","content":"Hybrid retrieval combines vector evidence with graph-backed factual support to improve coverage."}
+{"source_id":"fact-tree-3","content":"Validation can use an LLM judge or lexical overlap heuristics as a factuality signal before final answer generation."}
+{"source_id":"fact-tree-4","content":"Query decomposition breaks a complex multi-hop question into smaller verifiable sub-questions."}
+{"source_id":"fact-tree-5","content":"TreeQA's corrector agent rewrites a query when a sub-answer fails validation to attempt a better retrieval pass."}
+{"source_id":"fact-tree-6","content":"The pipeline retries a leaf node up to max_retries times when the validator confidence is below the threshold."}
+{"source_id":"fact-tree-7","content":"HotpotQA is a multi-hop QA dataset with over 113,000 question-answer pairs drawn from two Wikipedia paragraphs."}
+{"source_id":"fact-tree-8","content":"2WikiMultiHopQA requires reasoning across up to four evidence hops and annotates explicit reasoning chains."}
+{"source_id":"fact-tree-9","content":"Dense Passage Retrieval (DPR) uses bi-encoder models to embed queries and passages into a shared vector space."}
+{"source_id":"fact-tree-10","content":"BM25 is a sparse retrieval method based on term frequency and inverse document frequency."}
+{"source_id":"fact-tree-11","content":"Hybrid retrieval fuses BM25 lexical scores with dense embedding scores, typically outperforming either alone."}
+{"source_id":"fact-tree-12","content":"RAGAS measures faithfulness, answer relevance, context precision, and context recall for RAG pipelines."}
+{"source_id":"fact-tree-13","content":"LLM hallucination occurs when the model generates text not supported by retrieved evidence or contradicts the source."}
+{"source_id":"fact-tree-14","content":"LangGraph represents agent workflows as directed graphs where nodes are computation steps and edges define control flow."}
+{"source_id":"fact-tree-15","content":"LangGraph checkpointing saves state at each node boundary, enabling pausing, resuming, and replaying workflows."}
+{"source_id":"fact-tree-16","content":"Self-RAG trains the language model to decide when to retrieve and to critique its own outputs against evidence."}
+{"source_id":"fact-tree-17","content":"ReAct is an agent pattern that alternates between reasoning and acting in a loop until the task is complete."}
+{"source_id":"fact-tree-18","content":"OpenRouter provides a unified OpenAI-compatible API gateway to many open and commercial language models."}
+{"source_id":"fact-tree-19","content":"Local vector index in TreeQA stores chunked document text in JSONL format for lexical retrieval without a vector database."}
+{"source_id":"fact-tree-20","content":"MuSiQue enforces that each question requires all hops by verifying that partial paths cannot answer the question alone."}

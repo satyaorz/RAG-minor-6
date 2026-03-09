@@ -1,0 +1,873 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TreeQA — Multi-Hop RAG</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+  <style>
+    /* ─── Reset & tokens ─────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg:        #f8fafc;
+      --surface:   #ffffff;
+      --border:    #e2e8f0;
+      --text:      #1e293b;
+      --muted:     #64748b;
+      --indigo:    #6366f1;
+      --indigo-dk: #4338ca;
+      --green:     #16a34a;
+      --green-bg:  #f0fdf4;
+      --green-br:  #86efac;
+      --amber:     #d97706;
+      --amber-bg:  #fffbeb;
+      --amber-br:  #fcd34d;
+      --red:       #dc2626;
+      --red-bg:    #fef2f2;
+      --shadow-sm: 0 1px 3px rgba(0,0,0,.07);
+      --shadow:    0 4px 16px rgba(0,0,0,.08);
+      --radius:    12px;
+      --radius-sm: 8px;
+      --indigo-lt: #e0e7ff;
+    }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+           background: var(--bg); color: var(--text); min-height: 100vh; }
+
+    /* ─── Header ─────────────────────────────────────────────────────────── */
+    header {
+      background: linear-gradient(135deg, #4338ca 0%, #6366f1 60%, #818cf8 100%);
+      padding: 28px 32px 24px;
+      color: #fff;
+    }
+    header h1 { font-size: 1.75rem; font-weight: 700; letter-spacing: -.5px; }
+    header p  { font-size: .9rem; opacity: .8; margin-top: 4px; }
+
+    /* ─── Main layout ────────────────────────────────────────────────────── */
+    main { max-width: 900px; margin: 32px auto; padding: 0 20px 80px; }
+
+    /* ─── Query card ─────────────────────────────────────────────────────── */
+    .query-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      box-shadow: var(--shadow-sm);
+      margin-bottom: 28px;
+    }
+    .query-card label { font-weight: 600; font-size: .875rem; color: var(--muted);
+                         display: block; margin-bottom: 8px; text-transform: uppercase;
+                         letter-spacing: .06em; }
+    .query-card textarea {
+      width: 100%; border: 1.5px solid var(--border); border-radius: var(--radius-sm);
+      padding: 12px 14px; font-size: 1rem; font-family: inherit; resize: vertical;
+      min-height: 90px; transition: border-color .2s;
+    }
+    .query-card textarea:focus { outline: none; border-color: var(--indigo); }
+    .query-row { display: flex; gap: 12px; margin-top: 14px; align-items: center; flex-wrap: wrap; }
+    .btn-run {
+      background: var(--indigo); color: #fff; border: none; border-radius: var(--radius-sm);
+      padding: 11px 28px; font-size: .95rem; font-weight: 600; cursor: pointer;
+      transition: background .2s, transform .1s;
+    }
+    .btn-run:hover  { background: var(--indigo-dk); }
+    .btn-run:active { transform: scale(.97); }
+    .btn-run:disabled { background: #a5b4fc; cursor: not-allowed; }
+    .query-hint { font-size: .8rem; color: var(--muted); }
+
+    /* ─── Spinner ────────────────────────────────────────────────────────── */
+    .spinner-wrap { display: flex; align-items: center; gap: 12px; padding: 20px 0; }
+    .spinner {
+      width: 28px; height: 28px;
+      border: 3px solid #e0e7ff; border-top-color: var(--indigo);
+      border-radius: 50%; animation: spin .7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spinner-text { color: var(--muted); font-size: .9rem; }
+    .hidden { display: none !important; }
+
+    /* ─── Stats bar ──────────────────────────────────────────────────────── */
+    .stats-bar {
+      display: flex; gap: 16px; margin-bottom: 20px; flex-wrap: wrap;
+    }
+    .stat {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); padding: 14px 20px;
+      flex: 1; min-width: 110px; text-align: center;
+      box-shadow: var(--shadow-sm);
+    }
+    .stat-value { font-size: 1.6rem; font-weight: 700; color: var(--indigo); }
+    .stat-label { font-size: .75rem; color: var(--muted); text-transform: uppercase;
+                  letter-spacing: .06em; margin-top: 2px; }
+
+    /* ─── Final answer ───────────────────────────────────────────────────── */
+    .answer-card {
+      background: #f0fdf4; border: 1.5px solid #86efac;
+      border-radius: var(--radius); padding: 20px 24px; margin-bottom: 28px;
+      box-shadow: var(--shadow-sm);
+    }
+    .answer-card h2 { font-size: .8rem; font-weight: 700; text-transform: uppercase;
+                       letter-spacing: .08em; color: var(--green); margin-bottom: 10px; }
+    .answer-card p  { font-size: 1rem; line-height: 1.65; color: var(--text); }
+
+    /* ─── Section heading ────────────────────────────────────────────────── */
+    .section-heading {
+      font-size: .8rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .08em; color: var(--muted); margin-bottom: 14px;
+    }
+
+    /* ─── Node card ──────────────────────────────────────────────────────── */
+    .node-card {
+      background: var(--surface); border: 1.5px solid var(--border);
+      border-radius: var(--radius); box-shadow: var(--shadow-sm);
+      margin-bottom: 14px; overflow: hidden;
+    }
+    .node-card.verified  { border-color: var(--green-br); }
+    .node-card.needs_review { border-color: var(--amber-br); }
+    .node-card.pending   { border-color: var(--border); }
+
+    .node-header {
+      display: flex; align-items: flex-start; gap: 12px;
+      padding: 16px 18px 12px;
+    }
+    .connector { width: 3px; min-height: 100%; align-self: stretch; border-radius: 2px;
+                  flex-shrink: 0; }
+    .verified  .connector { background: var(--green); }
+    .needs_review .connector { background: var(--amber); }
+    .pending   .connector { background: var(--border); }
+
+    .node-body { flex: 1; min-width: 0; }
+    .node-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+    .node-id   { font-size: .72rem; color: var(--muted); font-family: monospace; }
+
+    .badge {
+      font-size: .68rem; font-weight: 700; padding: 2px 8px;
+      border-radius: 99px; text-transform: uppercase; letter-spacing: .05em;
+    }
+    .badge.verified    { background: #dcfce7; color: #15803d; }
+    .badge.needs_review { background: #fef3c7; color: #92400e; }
+    .badge.pending     { background: #f1f5f9; color: var(--muted); }
+
+    .attempts-tag { font-size: .7rem; color: var(--muted); }
+
+    .node-question {
+      font-weight: 600; font-size: .95rem; margin-bottom: 8px;
+      color: var(--text); line-height: 1.4;
+    }
+
+    /* confidence bar */
+    .conf-bar-wrap { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+    .conf-bar-track {
+      flex: 1; height: 5px; background: #e2e8f0; border-radius: 99px; overflow: hidden;
+    }
+    .conf-bar-fill  { height: 100%; border-radius: 99px; transition: width .4s ease; }
+    .conf-bar-fill.high   { background: var(--green); }
+    .conf-bar-fill.medium { background: var(--amber); }
+    .conf-bar-fill.low    { background: var(--red); }
+    .conf-label { font-size: .72rem; color: var(--muted); white-space: nowrap; }
+
+    .node-answer { font-size: .9rem; line-height: 1.6; color: #334155; padding-right: 4px; }
+
+    /* rationale */
+    .rationale {
+      font-size: .78rem; color: var(--muted); margin-top: 8px;
+      border-left: 2px solid var(--border); padding-left: 10px; font-style: italic;
+    }
+
+    /* evidence toggle */
+    .evidence-toggle {
+      display: flex; align-items: center; gap: 6px;
+      font-size: .78rem; color: var(--indigo); background: none; border: none;
+      cursor: pointer; padding: 8px 18px 14px; font-family: inherit;
+      font-weight: 500;
+    }
+    .evidence-toggle:hover { text-decoration: underline; }
+    .chevron { transition: transform .2s; display: inline-block; font-style: normal; }
+    .chevron.open { transform: rotate(90deg); }
+
+    .evidence-panel {
+      border-top: 1px solid var(--border); padding: 14px 18px;
+      background: #f8fafc;
+    }
+    .evidence-panel h4 { font-size: .72rem; text-transform: uppercase; letter-spacing: .06em;
+                          color: var(--muted); margin-bottom: 10px; }
+    .doc-item { margin-bottom: 12px; }
+    .doc-meta {
+      display: flex; align-items: center; gap: 8px; margin-bottom: 4px; flex-wrap: wrap;
+    }
+    .doc-source { font-size: .72rem; font-family: monospace;
+                   background: #e0e7ff; color: #4338ca; padding: 1px 7px;
+                   border-radius: 4px; }
+    .doc-score  { font-size: .72rem; color: var(--muted); }
+    .doc-content { font-size: .82rem; color: #475569; line-height: 1.55; }
+
+    /* children indented */
+    .children-wrap { margin-left: 28px; }
+
+    /* ─── Error box ──────────────────────────────────────────────────────── */
+    .error-box {
+      background: var(--red-bg); border: 1.5px solid #fca5a5;
+      border-radius: var(--radius); padding: 18px 22px; color: var(--red);
+      font-size: .9rem; margin-bottom: 20px;
+    }
+
+    /* ─── Responsive ─────────────────────────────────────────────────────── */
+    @media (max-width: 600px) {
+      header { padding: 20px 16px; }
+      main   { padding: 0 12px 60px; margin-top: 20px; }
+      .query-card { padding: 16px; }
+      .children-wrap { margin-left: 14px; }
+    }
+
+    /* ─── Upload panel ───────────────────────────────────────────────────── */
+    .upload-panel { background:var(--surface); border:1px solid var(--border);
+      border-radius:var(--radius); margin-bottom:20px; box-shadow:var(--shadow-sm); }
+    .upload-panel summary { padding:14px 20px; font-weight:600; font-size:.9rem;
+      cursor:pointer; display:flex; align-items:center; gap:8px; user-select:none;
+      list-style:none; color:var(--text); }
+    .upload-panel summary::-webkit-details-marker { display:none; }
+    .upload-panel summary::after { content:'›'; margin-left:auto; font-size:1.1rem;
+      transition:transform .2s; color:var(--muted); }
+    .upload-panel[open] summary::after { transform:rotate(90deg); }
+    .upload-body { padding:0 20px 20px; border-top:1px solid var(--border); }
+    .drop-zone { border:2px dashed var(--border); border-radius:var(--radius-sm);
+      padding:28px; text-align:center; cursor:pointer; margin:16px 0;
+      transition:border-color .2s,background .2s; position:relative; }
+    .drop-zone:hover,.drop-zone.drag-over { border-color:var(--indigo); background:var(--indigo-lt); }
+    .drop-zone input[type=file] { position:absolute; inset:0; opacity:0; cursor:pointer; width:100%; }
+    .drop-zone-icon { font-size:2rem; margin-bottom:8px; }
+    .drop-zone-text { font-size:.875rem; color:var(--muted); }
+    .drop-zone-text strong { color:var(--indigo); }
+    .upload-status { font-size:.85rem; padding:8px 12px; border-radius:var(--radius-sm); margin-top:8px; }
+    .upload-status.ok  { background:var(--green-bg); color:var(--green); }
+    .upload-status.err { background:var(--red-bg); color:var(--red); }
+    .docs-list { margin-top:14px; }
+    .docs-list h4 { font-size:.75rem; text-transform:uppercase; letter-spacing:.06em;
+      color:var(--muted); margin-bottom:8px; }
+    .doc-pill { display:inline-flex; align-items:center; gap:6px; background:#f1f5f9;
+      border:1px solid var(--border); border-radius:6px; padding:4px 10px;
+      font-size:.78rem; color:#334155; margin:3px; }
+    .doc-pill .doc-size { color:var(--muted); }
+
+    /* ─── Compare toggle ─────────────────────────────────────────────────── */
+    .compare-toggle { display:flex; align-items:center; gap:6px; font-size:.85rem;
+      color:var(--muted); cursor:pointer; user-select:none; }
+    .compare-toggle input { accent-color:var(--indigo); width:15px; height:15px; cursor:pointer; }
+
+    /* ─── Tabs ───────────────────────────────────────────────────────────── */
+    .tab-bar { display:flex; gap:4px; margin-bottom:24px; border-bottom:2px solid var(--border); }
+    .tab { background:none; border:none; border-bottom:2.5px solid transparent;
+      margin-bottom:-2px; padding:10px 22px; font-size:.9rem; font-weight:600;
+      color:var(--muted); cursor:pointer; transition:color .15s,border-color .15s;
+      font-family:inherit; }
+    .tab:hover { color:var(--text); }
+    .tab.active { color:var(--indigo); border-bottom-color:var(--indigo); }
+
+    /* ─── Compare pane ───────────────────────────────────────────────────── */
+    .compare-banner { background:#f8fafc; border:1px solid var(--border);
+      border-radius:var(--radius); padding:14px 18px; margin-bottom:20px;
+      font-size:.85rem; color:var(--muted); line-height:1.6; }
+    .compare-grid { display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-bottom:28px; }
+    @media (max-width:640px) { .compare-grid { grid-template-columns:1fr; } }
+    .compare-col { background:var(--surface); border:1.5px solid var(--border);
+      border-radius:var(--radius); padding:20px; box-shadow:var(--shadow-sm); }
+    .compare-col.treeqa-col { border-color:#a5b4fc; }
+    .compare-col-title { font-size:.8rem; font-weight:700; text-transform:uppercase;
+      letter-spacing:.08em; margin-bottom:14px; }
+    .treeqa-col .compare-col-title { color:var(--indigo); }
+    .traditional-col .compare-col-title { color:var(--muted); }
+    .compare-answer { font-size:.9rem; line-height:1.6; color:var(--text); margin-bottom:14px; }
+    .compare-meta { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:10px; }
+    .compare-chip { font-size:.75rem; padding:3px 10px; border-radius:99px;
+      background:#f1f5f9; color:#334155; border:1px solid var(--border); }
+    .compare-chip.pass { background:#dcfce7; color:#15803d; border-color:#86efac; }
+    .compare-chip.fail { background:#fee2e2; color:#991b1b; border-color:#fca5a5; }
+
+    /* ─── Charts pane ────────────────────────────────────────────────────── */
+    .chart-wrap { background:var(--surface); border:1px solid var(--border);
+      border-radius:var(--radius); padding:22px; margin-bottom:20px; box-shadow:var(--shadow-sm); }
+    .chart-wrap h3 { font-size:.8rem; font-weight:700; text-transform:uppercase;
+      letter-spacing:.08em; color:var(--muted); margin-bottom:16px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>🌳 TreeQA</h1>
+  <p>Hallucination-aware multi-hop retrieval-augmented generation</p>
+</header>
+
+<main>
+  <!-- Documents upload panel -->
+  <details class="upload-panel" id="upload-panel">
+    <summary>📄 Documents <span id="doc-count-badge" style="font-weight:400;color:var(--muted);font-size:.8rem;"></span></summary>
+    <div class="upload-body">
+      <div class="drop-zone" id="drop-zone">
+        <input type="file" id="file-input" accept=".txt,.md" multiple />
+        <div class="drop-zone-icon">📁</div>
+        <div class="drop-zone-text">
+          <strong>Choose .txt or .md files</strong> or drag &amp; drop here<br>
+          <small style="color:var(--muted);margin-top:4px;display:block;">Files are automatically ingested into the retrieval index.</small>
+        </div>
+      </div>
+      <div id="upload-status"></div>
+      <div class="docs-list" id="docs-list">
+        <h4>Current documents</h4>
+        <div id="docs-pills"><span style="font-size:.8rem;color:var(--muted)">Loading…</span></div>
+      </div>
+    </div>
+  </details>
+
+  <!-- Query input -->
+  <div class="query-card">
+    <label for="query-input">Your question</label>
+    <textarea id="query-input" placeholder="Ask a multi-hop question…">How does TreeQA use hybrid retrieval and validation to reduce hallucinations in multi-hop QA?</textarea>
+    <div class="query-row">
+      <button class="btn-run" id="run-btn" onclick="handleRun()">Run ▶</button>
+      <label class="compare-toggle">
+        <input type="checkbox" id="compare-mode"> Compare with traditional RAG
+      </label>
+      <span class="query-hint">Queries with "and" or "then" are automatically decomposed.</span>
+    </div>
+  </div>
+
+  <!-- Loading -->
+  <div id="loading" class="spinner-wrap hidden">
+    <div class="spinner"></div>
+    <span class="spinner-text" id="spinner-text">Running pipeline…</span>
+    <button id="cancel-btn" onclick="cancelQuery()" style="margin-left:12px;padding:4px 12px;font-size:.85rem;border:1px solid var(--muted);border-radius:6px;background:transparent;color:var(--muted);cursor:pointer;">Cancel</button>
+  </div>
+
+  <!-- Error -->
+  <div id="error-box" class="error-box hidden"></div>
+
+  <!-- Results -->
+  <div id="results" class="hidden">
+    <!-- Tab bar -->
+    <div class="tab-bar">
+      <button class="tab active" data-tab="treeqa"  onclick="switchTab('treeqa')">🌳 TreeQA</button>
+      <button class="tab"        data-tab="compare" onclick="switchTab('compare')" id="tab-compare">⚖ Compare</button>
+      <button class="tab"        data-tab="charts"  onclick="switchTab('charts')">📊 Charts</button>
+    </div>
+
+    <!-- TreeQA pane -->
+    <div id="pane-treeqa">
+      <div class="stats-bar" id="stats-bar"></div>
+      <div class="answer-card" id="answer-card"></div>
+      <div class="section-heading">Logic tree</div>
+      <div id="tree-container"></div>
+    </div>
+
+    <!-- Compare pane -->
+    <div id="pane-compare" class="hidden">
+      <div class="compare-banner">
+        ℹ️ <strong>Traditional RAG</strong> retrieves top-k docs and generates a direct answer — no decomposition, no retry loop.
+        <strong>TreeQA</strong> decomposes the query, validates each sub-answer, and synthesises a grounded response.
+      </div>
+      <div class="compare-grid">
+        <div class="compare-col traditional-col" id="col-traditional"></div>
+        <div class="compare-col treeqa-col"       id="col-treeqa"></div>
+      </div>
+    </div>
+
+    <!-- Charts pane -->
+    <div id="pane-charts" class="hidden">
+      <div class="chart-wrap" id="chart-method-wrap" style="display:none">
+        <h3>Method Comparison — Traditional RAG vs TreeQA</h3>
+        <canvas id="chart-method" height="120"></canvas>
+      </div>
+      <div class="chart-wrap">
+        <h3>Node Confidence Distribution</h3>
+        <canvas id="chart-nodes" height="160"></canvas>
+      </div>
+      <div class="chart-wrap">
+        <h3>Retrieval Score Distribution (top 12 docs)</h3>
+        <canvas id="chart-retrieval" height="160"></canvas>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+  /* ── state ──────────────────────────────────────────────────────────── */
+  const CLIENT_TIMEOUT_MS = 120_000;
+  let _ctrl    = null;   // AbortController
+  let _timer   = null;   // auto-abort timer
+  let _ticker  = null;   // elapsed second ticker
+  let _tqaData  = null;  // last TreeQA PipelineResult
+  let _tradData = null;  // last traditional RAG result
+  let _charts   = {};    // live Chart.js instances keyed by canvas id
+
+  /* ── run / cancel ───────────────────────────────────────────────────── */
+  function handleRun() {
+    document.getElementById('compare-mode').checked ? runCompare() : runQuery();
+  }
+
+  function cancelQuery() {
+    if (_ctrl) _ctrl.abort();
+    clearTimeout(_timer); clearInterval(_ticker);
+    setLoading(false); setError('Request cancelled.');
+  }
+
+  async function _post(url, body) {
+    _ctrl = new AbortController();
+    setLoading(true); setError(null); clearResults();
+
+    _timer = setTimeout(() => {
+      _ctrl.abort(); setLoading(false);
+      setError('Request timed out after 2 minutes. Try a simpler query.');
+    }, CLIENT_TIMEOUT_MS);
+
+    let secs = 0;
+    _ticker = setInterval(() => {
+      secs++;
+      const t = document.getElementById('spinner-text');
+      if (t) t.textContent = `Running pipeline… ${secs}s`;
+    }, 1000);
+
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: _ctrl.signal,
+      });
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new Error(e.detail || 'Server error');
+      }
+      return await res.json();
+    } catch (err) {
+      if (err.name !== 'AbortError') setError(err.message);
+      return null;
+    } finally {
+      clearTimeout(_timer); clearInterval(_ticker);
+      const t = document.getElementById('spinner-text');
+      if (t) t.textContent = 'Running pipeline…';
+      setLoading(false);
+    }
+  }
+
+  async function runQuery() {
+    const query = document.getElementById('query-input').value.trim();
+    if (!query) return;
+    const data = await _post('/api/run', { query });
+    if (!data) return;
+    _tqaData = data; _tradData = null;
+    showResults(); switchTab('treeqa');
+  }
+
+  async function runCompare() {
+    const query = document.getElementById('query-input').value.trim();
+    if (!query) return;
+    const data = await _post('/api/compare', { query });
+    if (!data) return;
+    _tqaData = data.treeqa; _tradData = data.traditional;
+    showResults(); switchTab('compare');
+  }
+
+  /* ── tabs ───────────────────────────────────────────────────────────── */
+  function switchTab(name) {
+    ['treeqa', 'compare', 'charts'].forEach(t => {
+      document.getElementById('pane-' + t).classList.toggle('hidden', t !== name);
+      document.querySelector(`[data-tab="${t}"]`).classList.toggle('active', t === name);
+    });
+    if (name === 'charts') renderCharts();
+  }
+
+  /* ── results ────────────────────────────────────────────────────────── */
+  function showResults() {
+    renderTreeQAPane(_tqaData);
+    const cmpBtn = document.getElementById('tab-compare');
+    cmpBtn.style.opacity       = _tradData ? '1' : '.4';
+    cmpBtn.style.pointerEvents = _tradData ? '' : 'none';
+    if (_tradData) renderComparePane(_tradData, _tqaData);
+    document.getElementById('results').classList.remove('hidden');
+  }
+
+  function clearResults() {
+    document.getElementById('results').classList.add('hidden');
+  }
+
+  function renderTreeQAPane(data) {
+    const nodes    = flattenNodes(data.root);
+    const verified = nodes.filter(n => n.status === 'verified').length;
+    const review   = nodes.filter(n => n.status === 'needs_review').length;
+    const confs    = nodes.filter(n => n.validation).map(n => n.validation.confidence);
+    const avgConf  = confs.length ? confs.reduce((a, b) => a + b, 0) / confs.length : 0;
+
+    document.getElementById('stats-bar').innerHTML =
+      stat(nodes.length,  'Nodes') +
+      stat(verified,      'Verified', '#16a34a') +
+      stat(review,        'Review',   '#d97706') +
+      stat(Math.round(avgConf * 100) + '%', 'Avg Conf', '#6366f1');
+
+    document.getElementById('answer-card').innerHTML =
+      `<h2>✓ Final answer</h2><p>${esc(data.final_answer)}</p>`;
+
+    const container = document.getElementById('tree-container');
+    container.innerHTML = '';
+    container.appendChild(renderNode(data.root));
+  }
+
+  function renderComparePane(trad, tqa) {
+    const tqaNodes    = flattenNodes(tqa.root);
+    const tqaConfs    = tqaNodes.filter(n => n.validation).map(n => n.validation.confidence);
+    const tqaAvgConf  = tqaConfs.length ? tqaConfs.reduce((a, b) => a + b, 0) / tqaConfs.length : 0;
+    const tqaDocs     = tqaNodes.reduce((s, n) => s + (n.documents || []).length, 0);
+    const tqaVerified = tqaNodes.filter(n => n.status === 'verified').length;
+
+    const tradPct = Math.round(trad.confidence * 100);
+    const tqaPct  = Math.round(tqaAvgConf * 100);
+    const tradCls = trad.confidence >= .7 ? 'high' : trad.confidence >= .4 ? 'medium' : 'low';
+    const tqaCls  = tqaAvgConf  >= .7 ? 'high' : tqaAvgConf  >= .4 ? 'medium' : 'low';
+
+    document.getElementById('col-traditional').innerHTML = `
+      <div class="compare-col-title">⚡ Traditional RAG</div>
+      <div class="compare-meta">
+        <span class="compare-chip ${trad.passed ? 'pass' : 'fail'}">${trad.passed ? '✓ Grounded' : '✗ Unverified'}</span>
+        <span class="compare-chip">${trad.doc_count} docs</span>
+        <span class="compare-chip">1 hop · no decomposition</span>
+      </div>
+      <div class="conf-bar-wrap">
+        <div class="conf-bar-track"><div class="conf-bar-fill ${tradCls}" style="width:${tradPct}%"></div></div>
+        <span class="conf-label">${tradPct}% confidence</span>
+      </div>
+      <div class="compare-answer">${esc(trad.answer)}</div>
+      <div class="rationale">${esc(trad.rationale)}</div>
+    `;
+
+    document.getElementById('col-treeqa').innerHTML = `
+      <div class="compare-col-title">🌳 TreeQA (Multi-Hop)</div>
+      <div class="compare-meta">
+        <span class="compare-chip ${tqa.root.status === 'verified' ? 'pass' : 'fail'}">${tqa.root.status === 'verified' ? '✓ Verified' : '⚠ Needs Review'}</span>
+        <span class="compare-chip">${tqaDocs} docs · ${tqaNodes.length} nodes</span>
+        <span class="compare-chip">${tqaVerified}/${tqaNodes.length} verified</span>
+      </div>
+      <div class="conf-bar-wrap">
+        <div class="conf-bar-track"><div class="conf-bar-fill ${tqaCls}" style="width:${tqaPct}%"></div></div>
+        <span class="conf-label">${tqaPct}% avg confidence</span>
+      </div>
+      <div class="compare-answer">${esc(tqa.final_answer)}</div>
+    `;
+  }
+
+  /* ── charts ─────────────────────────────────────────────────────────── */
+  function destroyChart(id) {
+    if (_charts[id]) { _charts[id].destroy(); delete _charts[id]; }
+  }
+
+  function renderCharts() {
+    if (!_tqaData) return;
+    const tqaNodes = flattenNodes(_tqaData.root);
+
+    /* Chart 1: method comparison — only when compare data is present */
+    const mwrap = document.getElementById('chart-method-wrap');
+    if (_tradData) {
+      mwrap.style.display = '';
+      destroyChart('chart-method');
+      const tqaConfs = tqaNodes.filter(n => n.validation).map(n => n.validation.confidence);
+      const tqaAvg   = tqaConfs.length ? tqaConfs.reduce((a, b) => a + b, 0) / tqaConfs.length : 0;
+      const tqaDocs  = tqaNodes.reduce((s, n) => s + (n.documents || []).length, 0);
+      _charts['chart-method'] = new Chart(document.getElementById('chart-method'), {
+        type: 'bar',
+        data: {
+          labels: ['Confidence (%)', 'Evidence Docs', 'Reasoning Hops'],
+          datasets: [
+            {
+              label: 'Traditional RAG',
+              data: [Math.round(_tradData.confidence * 100), _tradData.doc_count, 1],
+              backgroundColor: 'rgba(100,116,139,.55)',
+              borderColor: '#64748b', borderWidth: 1.5, borderRadius: 6,
+            },
+            {
+              label: 'TreeQA',
+              data: [Math.round(tqaAvg * 100), tqaDocs, tqaNodes.length],
+              backgroundColor: 'rgba(99,102,241,.6)',
+              borderColor: '#6366f1', borderWidth: 1.5, borderRadius: 6,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: { position: 'top' },
+            tooltip: { callbacks: { label: ctx => {
+              const v = ctx.raw; const l = ctx.label;
+              return `${ctx.dataset.label}: ${l === 'Confidence (%)' ? v + '%' : v}`;
+            }}},
+          },
+          scales: {
+            y: { beginAtZero: true, grid: { color: '#f1f5f9' } },
+            x: { grid: { display: false } },
+          },
+        },
+      });
+    } else {
+      mwrap.style.display = 'none';
+    }
+
+    /* Chart 2: per-node confidence (horizontal bars, color by status) */
+    destroyChart('chart-nodes');
+    const nodeColors = tqaNodes.map(n =>
+      n.status === 'verified'     ? 'rgba(22,163,74,.7)'  :
+      n.status === 'needs_review' ? 'rgba(217,119,6,.7)'  :
+                                    'rgba(100,116,139,.4)'
+    );
+    _charts['chart-nodes'] = new Chart(document.getElementById('chart-nodes'), {
+      type: 'bar',
+      data: {
+        labels: tqaNodes.map(n => n.node_id),
+        datasets: [{
+          label: 'Confidence (%)',
+          data:  tqaNodes.map(n => n.validation ? Math.round(n.validation.confidence * 100) : 0),
+          backgroundColor: nodeColors,
+          borderColor: nodeColors.map(c => c.replace(/,[\d.]+\)$/, ',1)')),
+          borderWidth: 1.5, borderRadius: 6,
+        }],
+      },
+      options: {
+        indexAxis: 'y', responsive: true,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { min: 0, max: 100, ticks: { callback: v => v + '%' }, grid: { color: '#f1f5f9' } },
+          y: { grid: { display: false } },
+        },
+      },
+    });
+
+    /* Chart 3: retrieval scores (top 12 docs, colored by source type) */
+    destroyChart('chart-retrieval');
+    const allDocs = tqaNodes.flatMap(n =>
+      (n.documents || []).map(d => ({
+        label: (d.source_id || '').substring(0, 28),
+        score: parseFloat((d.score || 0).toFixed(4)),
+        type:  d.source_type || 'vector',
+      }))
+    );
+    allDocs.sort((a, b) => b.score - a.score);
+    const top = allDocs.slice(0, 12);
+    _charts['chart-retrieval'] = new Chart(document.getElementById('chart-retrieval'), {
+      type: 'bar',
+      data: {
+        labels: top.map(d => d.label),
+        datasets: [{
+          label: 'Retrieval Score',
+          data:  top.map(d => d.score),
+          backgroundColor: top.map(d => d.type === 'graph' ? 'rgba(20,184,166,.65)' : 'rgba(99,102,241,.65)'),
+          borderColor:     top.map(d => d.type === 'graph' ? '#14b8a6' : '#6366f1'),
+          borderWidth: 1.5, borderRadius: 6,
+        }],
+      },
+      options: {
+        indexAxis: 'y', responsive: true,
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: ctx => `Score: ${ctx.raw}` } },
+        },
+        scales: {
+          x: { beginAtZero: true, grid: { color: '#f1f5f9' } },
+          y: { grid: { display: false }, ticks: { font: { size: 11 } } },
+        },
+      },
+    });
+  }
+
+  /* ── document upload ────────────────────────────────────────────────── */
+  async function loadDocuments() {
+    const res = await fetch('/api/documents').catch(() => null);
+    if (!res || !res.ok) return;
+    const { documents: docs } = await res.json();
+    document.getElementById('doc-count-badge').textContent =
+      `(${docs.length} file${docs.length !== 1 ? 's' : ''})`;
+    const pills = document.getElementById('docs-pills');
+    if (!docs.length) {
+      pills.innerHTML = '<span style="font-size:.8rem;color:var(--muted)">No documents yet.</span>';
+      return;
+    }
+    pills.innerHTML = docs.map(d =>
+      `<span class="doc-pill">📄 ${esc(d.name)} <span class="doc-size">${fmtBytes(d.size)}</span></span>`
+    ).join('');
+  }
+
+  function fmtBytes(b) {
+    if (b < 1024) return b + ' B';
+    if (b < 1048576) return (b / 1024).toFixed(1) + ' KB';
+    return (b / 1048576).toFixed(1) + ' MB';
+  }
+
+  async function uploadFiles(fileList) {
+    const status  = document.getElementById('upload-status');
+    const allowed = ['.txt', '.md'];
+    const valid   = Array.from(fileList).filter(f =>
+      allowed.includes('.' + f.name.split('.').pop().toLowerCase())
+    );
+    if (!valid.length) {
+      status.textContent = '⚠ No valid files (.txt or .md only)';
+      status.className = 'upload-status err'; return;
+    }
+    status.textContent = `Uploading ${valid.length} file(s)…`;
+    status.className = 'upload-status ok';
+    let ok = 0; const errors = [];
+    for (const file of valid) {
+      const fd = new FormData();
+      fd.append('file', file);
+      try {
+        const res = await fetch('/api/upload', { method: 'POST', body: fd });
+        if (res.ok) { ok++; }
+        else {
+          const e = await res.json().catch(() => ({ detail: res.statusText }));
+          errors.push(`${file.name}: ${e.detail}`);
+        }
+      } catch (e) { errors.push(`${file.name}: network error`); }
+    }
+    status.textContent = errors.length
+      ? '⚠ ' + errors.join('; ')
+      : `✓ ${ok} file(s) uploaded and ingested. Reload to query new content.`;
+    status.className = errors.length ? 'upload-status err' : 'upload-status ok';
+    loadDocuments();
+  }
+
+  /* drag-and-drop wiring */
+  const dropZone = document.getElementById('drop-zone');
+  const fileInput = document.getElementById('file-input');
+  fileInput.addEventListener('change', () => uploadFiles(fileInput.files));
+  dropZone.addEventListener('dragover',  e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+  dropZone.addEventListener('dragleave', ()  => dropZone.classList.remove('drag-over'));
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault(); dropZone.classList.remove('drag-over'); uploadFiles(e.dataTransfer.files);
+  });
+
+  /* Ctrl+Enter to submit */
+  document.getElementById('query-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) handleRun();
+  });
+
+  /* ── UI helpers ─────────────────────────────────────────────────────── */
+  function setLoading(on) {
+    document.getElementById('loading').classList.toggle('hidden', !on);
+    document.getElementById('run-btn').disabled = on;
+  }
+
+  function setError(msg) {
+    const box = document.getElementById('error-box');
+    if (msg) { box.textContent = '⚠ ' + msg; box.classList.remove('hidden'); }
+    else      { box.classList.add('hidden'); }
+  }
+
+  function stat(value, label, color = '#6366f1') {
+    return `<div class="stat">
+      <div class="stat-value" style="color:${color}">${esc(String(value))}</div>
+      <div class="stat-label">${esc(label)}</div>
+    </div>`;
+  }
+
+  function flattenNodes(node) {
+    return [node, ...(node.children || []).flatMap(flattenNodes)];
+  }
+
+  /* ── tree renderer ──────────────────────────────────────────────────── */
+  function renderNode(node) {
+    const status    = node.status || 'pending';
+    const conf      = node.validation ? node.validation.confidence : null;
+    const confPct   = conf !== null ? Math.round(conf * 100) : null;
+    const confClass = conf === null ? '' : conf >= 0.7 ? 'high' : conf >= 0.4 ? 'medium' : 'low';
+    const badge     = status === 'verified' ? '✓ verified' : status === 'needs_review' ? '⚠ needs review' : status;
+
+    const card = el('div', { className: `node-card ${status}` });
+    const header = el('div', { className: 'node-header' });
+    header.appendChild(el('div', { className: 'connector' }));
+    const body = el('div', { className: 'node-body' });
+
+    const meta = el('div', { className: 'node-meta' });
+    meta.innerHTML = `
+      <span class="node-id">${esc(node.node_id)}</span>
+      <span class="badge ${status}">${esc(badge)}</span>
+      <span class="attempts-tag">attempt ${node.attempts || 0}</span>
+    `;
+    body.appendChild(meta);
+
+    const q = el('div', { className: 'node-question' });
+    q.textContent = node.question;
+    body.appendChild(q);
+
+    if (confPct !== null) {
+      const cw = el('div', { className: 'conf-bar-wrap' });
+      cw.innerHTML = `
+        <div class="conf-bar-track">
+          <div class="conf-bar-fill ${confClass}" style="width:${confPct}%"></div>
+        </div>
+        <span class="conf-label">${confPct}% confidence</span>
+      `;
+      body.appendChild(cw);
+    }
+
+    const ans = el('div', { className: 'node-answer' });
+    ans.textContent = node.answer || 'No answer generated.';
+    body.appendChild(ans);
+
+    if (node.validation && node.validation.rationale) {
+      const rat = el('div', { className: 'rationale' });
+      rat.textContent = node.validation.rationale;
+      body.appendChild(rat);
+    }
+
+    header.appendChild(body);
+    card.appendChild(header);
+
+    const docs = node.documents || [];
+    if (docs.length) {
+      const evId   = 'ev-'   + node.node_id;
+      const chevId = 'chev-' + node.node_id;
+      const toggle = el('button', { className: 'evidence-toggle' });
+      toggle.innerHTML = `<span class="chevron" id="${esc(chevId)}">›</span> ${docs.length} evidence source${docs.length > 1 ? 's' : ''}`;
+      toggle.onclick = () => {
+        const panel = document.getElementById(evId);
+        const chev  = document.getElementById(chevId);
+        const open  = panel.style.display !== 'none';
+        panel.style.display = open ? 'none' : 'block';
+        chev.classList.toggle('open', !open);
+      };
+      card.appendChild(toggle);
+
+      const panel = el('div', { className: 'evidence-panel', id: evId });
+      panel.style.display = 'none';
+      panel.innerHTML = `<h4>Retrieved evidence</h4>`;
+      docs.forEach(doc => {
+        const item = el('div', { className: 'doc-item' });
+        item.innerHTML = `
+          <div class="doc-meta">
+            <span class="doc-source">${esc(doc.source_type)}:${esc(doc.source_id)}</span>
+            <span class="doc-score">score ${(doc.score || 0).toFixed(3)}</span>
+          </div>
+          <div class="doc-content">${esc((doc.content || '').substring(0, 220))}${(doc.content || '').length > 220 ? '…' : ''}</div>
+        `;
+        panel.appendChild(item);
+      });
+      card.appendChild(panel);
+    }
+
+    if ((node.children || []).length) {
+      const wrap = el('div', { className: 'children-wrap' });
+      node.children.forEach(child => wrap.appendChild(renderNode(child)));
+      card.appendChild(wrap);
+    }
+
+    return card;
+  }
+
+  function el(tag, props = {}) {
+    const e = document.createElement(tag);
+    Object.assign(e, props); return e;
+  }
+
+  function esc(str) {
+    return String(str)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  /* ── init ───────────────────────────────────────────────────────────── */
+  loadDocuments();
+</script>
+</body>
+</html>

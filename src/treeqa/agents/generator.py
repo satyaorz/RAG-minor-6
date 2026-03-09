@@ -22,18 +22,18 @@ class AnswerGenerator:
                 context = self._format_context(question, selected_documents)
                 answer = self.llm_client.generate_text(
                     system_prompt=(
-                        "Answer using only the supplied evidence. "
-                        "Write 2 to 4 sentences in plain text. "
-                        "Prefer synthesis over copying. "
-                        "Do not repeat document titles or headings. "
-                        "Keep the answer concise, factual, and free of markdown lists unless the question asks for a list. "
-                        "If the evidence is insufficient, say so explicitly. "
-                        "End with a short `Sources:` line using the supplied source ids."
+                        "You are a grounded question-answering assistant. "
+                        "Answer ONLY using facts explicitly stated in the supplied evidence. "
+                        "Write 2 to 3 sentences in plain prose. "
+                        "Do NOT introduce information absent from the evidence. "
+                        "Do NOT repeat headings or source labels inside the answer body. "
+                        "Keep the answer concise and factual. "
+                        "End with a 'Sources:' line listing the source ids of the evidence you used."
                     ),
                     user_prompt=(
                         f"Question: {question}\n\n"
                         f"Evidence:\n{context}\n\n"
-                        f"Use only these sources: {self._source_refs(selected_documents)}"
+                        "Answer the question using only the evidence above."
                     ),
                 )
                 if answer:
@@ -78,7 +78,7 @@ class AnswerGenerator:
 
     def _format_context(self, question: str, documents: list[RetrievedDocument]) -> str:
         return "\n".join(
-            f"[{document.source_type}:{document.source_id}] {select_relevant_snippet(document.content, question)}"
+            f"[{document.source_type}|{document.source_id}] {select_relevant_snippet(document.content, question)}"
             for document in documents
         )
 

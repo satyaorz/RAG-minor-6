@@ -1,0 +1,50 @@
+Read IMPLEMENTATION_HANDOFF.txt which is present in the current directory completely before making changes.
+
+Then analyze the repository at:
+- d:\CompD\sem6Min\RAG-minor-6
+
+Your task is to continue the project from its current state, not to resummarize it superficially.
+
+Instructions:
+
+1. Read the handoff document in full and treat it as the primary project context.
+2. Inspect the repository structure and confirm the handoff still matches the code.
+3. Pay special attention to:
+- src/treeqa/pipeline.py
+- src/treeqa/ingest.py
+- src/treeqa/retrieval/scoring.py
+- src/treeqa/agents/generator.py
+- src/treeqa/diagnostics.py
+- data/documents/
+- data/graph/
+- tests/
+
+4. After reading, produce:
+- a concise confirmation of current project state
+- the highest-value next engineering step
+- the technical reasoning for choosing that step
+- the implementation plan
+
+5. Do not restart from scratch.
+6. Do not replace working infrastructure unless there is a strong technical reason.
+7. Preserve the current OpenRouter + local retrieval workflow unless you are explicitly improving it.
+8. Prefer incremental, testable improvements over large rewrites.
+
+Recommended immediate priorities:
+- remove stale artifacts under src/data if they still exist
+- improve corpus ingestion and metadata quality
+- improve answer quality without losing grounding
+- strengthen validation and evidence sufficiency rules
+- add benchmark/evaluation capability
+
+Validation expectations:
+- run the test suite
+- run ingest
+- run doctor
+- run the pipeline with a representative query
+
+Important:
+- this project already has working local retrieval and LLM wiring
+- detailed context matters here
+- use the handoff document as a continuity artifact for both humans and agents
+

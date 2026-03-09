@@ -1,3 +1,20 @@
+Metadata-Version: 2.4
+Name: treeqa
+Version: 0.1.0
+Summary: Hallucination-aware multi-hop RAG scaffold
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Requires-Dist: pydantic<3,>=2.6
+Requires-Dist: streamlit<2,>=1.34
+Provides-Extra: dev
+Requires-Dist: pytest<9,>=8.0; extra == "dev"
+Provides-Extra: api
+Requires-Dist: fastapi<1,>=0.110; extra == "api"
+Requires-Dist: uvicorn[standard]<1,>=0.29; extra == "api"
+Provides-Extra: providers
+Requires-Dist: neo4j<6,>=5.18; extra == "providers"
+Requires-Dist: qdrant-client<2,>=1.9; extra == "providers"
+
 # Project TreeQA
 
 A hallucination-aware, multi-hop RAG system with a logic-tree workflow and interactive web UI.

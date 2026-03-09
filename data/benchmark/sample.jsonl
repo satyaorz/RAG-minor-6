@@ -1,0 +1,10 @@
+{"question": "What is TreeQA?", "answer": "TreeQA is a hallucination-aware retrieval-augmented generation system for multi-hop question answering."}
+{"question": "What does hybrid retrieval combine?", "answer": "Hybrid retrieval combines vector evidence with graph-backed factual support."}
+{"question": "What is HotpotQA?", "answer": "HotpotQA is a multi-hop QA dataset with over 113,000 question-answer pairs drawn from two Wikipedia paragraphs."}
+{"question": "What is RAG?", "answer": "RAG combines a retrieval system with a language model to ground generated answers in external knowledge."}
+{"question": "What does validation do in TreeQA?", "answer": "Validation checks whether a sub-answer is supported by retrieved evidence using an LLM judge or lexical heuristics."}
+{"question": "What is LangGraph?", "answer": "LangGraph is a library for building stateful graph-structured multi-agent workflows on top of LangChain."}
+{"question": "What is LLM hallucination?", "answer": "Hallucination occurs when the model generates text that is factually incorrect or unsupported by retrieved evidence."}
+{"question": "What is RAGAS?", "answer": "RAGAS is an evaluation framework that measures faithfulness, answer relevance, context precision, and context recall for RAG pipelines."}
+{"question": "What is DPR?", "answer": "Dense Passage Retrieval uses bi-encoder models to embed queries and passages into a shared vector space."}
+{"question": "How does TreeQA handle failed validation?", "answer": "When validation fails, the corrector agent rewrites the query and the pipeline retries retrieval and generation."}
