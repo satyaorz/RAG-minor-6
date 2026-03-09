@@ -1,0 +1,122 @@
+TreeQA — Project Progress Summary
+====================================
+Last updated: 9 March 2026
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SUMMARY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TreeQA is a hallucination-aware multi-hop RAG system. It decomposes complex
+questions into a reasoning tree, retrieves evidence for each node via hybrid
+vector + graph lookup, generates LLM answers, and validates each answer for
+hallucinations before producing a final synthesised response.
+
+The project is a fully working local web application with a FastAPI backend
+and a single-page frontend. All core components are built and tested.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+COMPLETED — CORE SYSTEM
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[x] Project scaffold — pyproject.toml, src/ layout, editable install
+[x] Config system — TreeQASettings (pydantic-based, loads from .env)
+[x] Data models — QueryNode, RetrievedDoc, ValidationResult, PipelineResult
+[x] State machine — NodeStatus enum (pending → verified / needs_review)
+[x] Hybrid retriever — LocalVectorBackend + LocalGraphBackend, score fusion
+[x] LLM backend — OpenRouter client with configurable model + fallbacks
+[x] Decomposer agent — splits multi-hop queries into sub-question trees
+[x] Generator agent — produces answers per node from retrieved evidence
+[x] Validator agent — hallucination check with confidence score + rationale
+[x] Corrector agent — retries nodes that fail validation (up to max_attempts)
+[x] Full pipeline — orchestrates all agents end-to-end (TreeQAPipeline)
+[x] Ingest module — build_local_indices() indexes .txt/.md docs to JSONL
+[x] CLI — python -m treeqa.cli query / ingest commands
+[x] Diagnostics — self-check utility for config and backend health
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+COMPLETED — TESTS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[x] test_config.py        — settings loading and validation
+[x] test_adapters.py      — vector and graph backend retrieval
+[x] test_scoring.py       — hybrid score fusion logic
+[x] test_retriever.py     — end-to-end retrieval with mock backends
+[x] test_generator.py     — answer generation with mock LLM
+[x] test_pipeline.py      — full pipeline with all agents mocked (8 tests)
+[x] test_ingest.py        — document indexing from filesystem
+[x] test_diagnostics.py   — health check output
+[x] 46 / 46 tests pass, all offline (~0.08s), no LLM or network calls
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+COMPLETED — WEB APPLICATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[x] FastAPI backend (src/treeqa/api/app.py)
+      GET  /             → serves the SPA (index.html)
+      GET  /api/health   → {"status":"ok"}
+      GET  /api/documents → list uploaded documents with name/size
+      POST /api/run      → run full TreeQA pipeline, return reasoning tree
+      POST /api/upload   → upload .txt/.md, re-index, reload pipeline
+      POST /api/compare  → retrieval-only baseline vs TreeQA side-by-side
+
+[x] Single-page frontend (src/treeqa/ui/index.html)
+      — Query box with Ctrl+Enter shortcut
+      — AbortController with 2-minute client timeout + elapsed counter
+      — Cancel button during long requests
+      — Document upload panel (drag-and-drop, shows file list with sizes)
+      — Compare mode toggle (Traditional RAG vs TreeQA)
+      — 3-tab layout: 🌳 TreeQA | ⚖ Compare | 📊 Charts
+      — TreeQA tab: stats bar, final answer card, expandable reasoning tree
+        with per-node confidence bars, evidence toggles, validation badges
+      — Compare tab: side-by-side columns, confidence chips, doc counts
+      — Charts tab: Chart.js visualisations
+          · Method comparison bar chart (confidence, docs, hops)
+          · Per-node confidence horizontal bars (colour-coded by status)
+          · Top-12 retrieval scores by source type (vector / graph)
+
+[x] Traditional RAG baseline (compare mode)
+      — Pure retrieval, no LLM calls — returns top-3 doc snippets in <1s
+      — Represents naive keyword-search RAG for meaningful comparison
+      — No timeout risk; only TreeQA's LLM calls count against the limit
+
+[x] Async pipeline execution
+      — asyncio.wait_for with 110s timeout wraps blocking pipeline.run()
+      — ThreadPoolExecutor(max_workers=4) prevents blocking the event loop
+      — HTTP 504 returned on timeout with user-friendly message
+
+[x] python-multipart added to [api] optional deps in pyproject.toml
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+COMPLETED — DOCUMENTS (data/documents/)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[x] treeqa_overview.md         — project overview
+[x] hallucination_detection.md — hallucination detection techniques
+[x] multi_hop_qa.md            — multi-hop question answering background
+[x] rag_systems.md             — RAG architectures and approaches
+[x] langgraph_orchestration.md — LangGraph-style orchestration patterns
+    (all 5 docs indexed into data/index/ vector + graph JSONL stores)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+HOW TO RUN
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  pip install -e ".[api]"
+  cp .env.example .env          # add OPENROUTER_API_KEY
+  PYTHONPATH=src uvicorn treeqa.api.app:app --reload --port 8000
+  # open http://localhost:8000
+
+  Run tests (no API key needed):
+  PYTHONPATH=src pytest tests/ -q
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PENDING / NEXT STEPS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[ ] Semantic (embedding-based) retrieval
+      Replace keyword scoring in LocalVectorBackend with sentence-transformer
+      cosine similarity for much better retrieval quality.
+
+[ ] HotpotQA benchmark evaluation
+      Download dev set → convert to JSONL → run eval script to measure
+      exact match / F1 across 100+ multi-hop questions.
+
+[ ] Streaming responses
+      Stream TreeQA output token-by-token so the UI updates progressively
+      instead of waiting for the full pipeline to finish.
+
+[ ] Authentication / rate limiting
+      Add API key auth before exposing the server beyond localhost.
