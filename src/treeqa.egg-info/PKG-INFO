@@ -11,9 +11,13 @@ Requires-Dist: pytest<9,>=8.0; extra == "dev"
 Provides-Extra: api
 Requires-Dist: fastapi<1,>=0.110; extra == "api"
 Requires-Dist: uvicorn[standard]<1,>=0.29; extra == "api"
+Requires-Dist: python-multipart>=0.0.9; extra == "api"
 Provides-Extra: providers
 Requires-Dist: neo4j<6,>=5.18; extra == "providers"
 Requires-Dist: qdrant-client<2,>=1.9; extra == "providers"
+Requires-Dist: sentence-transformers<4,>=2.7; extra == "providers"
+Provides-Extra: datasets
+Requires-Dist: datasets>=2.0; extra == "datasets"
 
 # Project TreeQA
 

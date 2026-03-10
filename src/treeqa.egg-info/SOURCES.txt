@@ -3,6 +3,7 @@ pyproject.toml
 src/treeqa/__init__.py
 src/treeqa/cli.py
 src/treeqa/config.py
+src/treeqa/dataset_loader.py
 src/treeqa/diagnostics.py
 src/treeqa/eval.py
 src/treeqa/ingest.py

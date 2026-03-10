@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import MagicMock, patch
 
 from treeqa.config import TreeQASettings
 from treeqa.diagnostics import _check_llm, run_diagnostics
@@ -73,7 +74,8 @@ class TreeQADiagnosticsTest(unittest.TestCase):
                 data_dir=temp_dir,
             )
 
-            report = run_diagnostics(settings=settings, live_llm_probe=False)
+            with patch("treeqa.backends.vector.LocalVectorBackend._build_embeddings", return_value=(None, None)):
+                report = run_diagnostics(settings=settings, live_llm_probe=False)
 
             self.assertFalse(report.ok)
             self.assertEqual(

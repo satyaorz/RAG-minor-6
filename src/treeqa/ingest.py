@@ -62,6 +62,10 @@ def build_local_indices(settings: TreeQASettings | None = None) -> IngestReport:
     _write_jsonl(vector_index_path, [asdict(chunk) for chunk in chunks])
     _write_jsonl(graph_index_path, [asdict(fact) for fact in facts])
 
+    faiss_path = vector_index_path.with_suffix(".faiss")
+    meta_path = vector_index_path.with_name("vector_meta.json")
+    _build_faiss_index(chunks, settings.embedding_model, faiss_path, meta_path)
+
     return IngestReport(
         vector_chunks=len(chunks),
         graph_facts=len(facts),
@@ -221,3 +225,48 @@ def _write_jsonl(path: Path, rows: list[dict[str, str]]) -> None:
     with path.open("w", encoding="utf-8") as handle:
         for row in rows:
             handle.write(json.dumps(row, ensure_ascii=True) + "\n")
+
+
+def _build_faiss_index(
+    chunks: list[IndexedChunk],
+    model_name: str,
+    faiss_path: Path,
+    meta_path: Path,
+) -> None:
+    """Encode all chunks once and persist a FAISS IndexFlatIP + JSON metadata.
+
+    Skipped gracefully if faiss or sentence-transformers is not installed.
+    On subsequent server starts the embeddings are loaded from disk — no
+    re-encoding required, making startup essentially instant.
+    """
+    try:
+        import faiss  # type: ignore
+        import numpy as np  # type: ignore
+        from sentence_transformers import SentenceTransformer  # type: ignore
+    except ImportError:
+        return
+
+    from treeqa.retrieval.scoring import normalize_text
+
+    print(f"[ingest] Building FAISS index for {len(chunks)} chunks …")
+    model = SentenceTransformer(model_name)
+    texts = [
+        " ".join(filter(None, [c.title, c.section, normalize_text(c.content)]))
+        for c in chunks
+    ]
+    embeddings = model.encode(texts, normalize_embeddings=True, show_progress_bar=True)
+    embeddings = np.array(embeddings, dtype="float32")
+
+    d = embeddings.shape[1]
+    index = faiss.IndexFlatIP(d)  # inner product = cosine for L2-normalised vectors
+    index.add(embeddings)
+
+    faiss_path.parent.mkdir(parents=True, exist_ok=True)
+    faiss.write_index(index, str(faiss_path))
+
+    # Metadata saved as JSON (portable, human-readable, no pickle risks)
+    meta_path.write_text(
+        json.dumps([asdict(c) for c in chunks], ensure_ascii=True),
+        encoding="utf-8",
+    )
+    print(f"[ingest] FAISS index saved → {faiss_path} ({index.ntotal} vectors, d={d})")

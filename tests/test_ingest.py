@@ -2,14 +2,25 @@ import json
 import tempfile
 from pathlib import Path
 import unittest
+from unittest.mock import patch
 
 from treeqa.backends.graph import LocalGraphBackend
 from treeqa.backends.vector import LocalVectorBackend
 from treeqa.config import TreeQASettings
 from treeqa.ingest import build_local_indices
 
+# Patch _build_faiss_index to be a no-op so tests don't pay the cost of encoding.
+# conftest.py already stubs sentence_transformers so LocalVectorBackend is fast.
+_PATCH_FAISS = patch("treeqa.ingest._build_faiss_index", return_value=None)
+
 
 class TreeQAIngestTest(unittest.TestCase):
+    def setUp(self) -> None:
+        _PATCH_FAISS.start()
+
+    def tearDown(self) -> None:
+        _PATCH_FAISS.stop()
+
     def test_ingest_builds_local_indices(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             data_dir = Path(temp_dir)
@@ -36,8 +47,13 @@ class TreeQAIngestTest(unittest.TestCase):
             data_dir = Path(temp_dir)
             (data_dir / "documents").mkdir(parents=True)
             (data_dir / "graph").mkdir(parents=True)
+            # Two docs so IDF > 0 for terms that appear in only one doc
             (data_dir / "documents" / "overview.md").write_text(
                 "TreeQA uses logic tree reasoning and hybrid retrieval.",
+                encoding="utf-8",
+            )
+            (data_dir / "documents" / "extra.md").write_text(
+                "Multi-hop question answering benchmarks include HotpotQA.",
                 encoding="utf-8",
             )
             (data_dir / "graph" / "facts.jsonl").write_text(

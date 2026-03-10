@@ -1,19 +1,21 @@
 """
-TreeQA FastAPI backend.
+HAMH-RAG FastAPI backend (Hallucination-Aware Multi-Hop RAG).
 
 Start:
     uvicorn treeqa.api.app:app --reload --port 8000
 
 Endpoints:
-    GET  /                  → SPA (index.html)
-    GET  /api/health        → {"status": "ok"}
-    GET  /api/documents     → list files in data/documents/
-    GET  /api/datasets      → list supported benchmark datasets
-    POST /api/upload        → upload + ingest a .txt/.md file
-    POST /api/run           → run TreeQA pipeline, return PipelineResult
-    POST /api/run_rag       → run Normal RAG (single-hop), return result
-    POST /api/compare       → run traditional RAG + TreeQA in parallel
-    POST /api/load_dataset  → stream a HF benchmark dataset and re-index
+    GET  /                    → SPA (index.html)
+    GET  /api/health          → {"status": "ok"}
+    GET  /api/documents       → list files in data/documents/
+    GET  /api/datasets        → list supported benchmark datasets
+    POST /api/upload          → upload + ingest a .txt/.md file
+    POST /api/run             → run HAMH-RAG pipeline, return PipelineResult
+    POST /api/run/stream      → same, streamed as Server-Sent Events
+    POST /api/run_rag         → run Normal RAG (single-hop), return result
+    POST /api/run_rag/stream  → same, streamed as Server-Sent Events
+    POST /api/compare         → run traditional RAG + HAMH-RAG in parallel
+    POST /api/load_dataset    → stream a HF benchmark dataset and re-index
 """
 
 from __future__ import annotations
@@ -24,7 +26,7 @@ from dataclasses import asdict
 import pathlib
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, field_validator
 
@@ -41,7 +43,7 @@ _settings = TreeQASettings.from_env()
 _DOCS_DIR = _settings.resolved_data_dir / "documents"
 _ALLOWED_EXTENSIONS = {".txt", ".md"}
 
-app = FastAPI(title="TreeQA", version="0.1.0", docs_url="/api/docs", redoc_url=None)
+app = FastAPI(title="HAMH-RAG", version="0.1.0", docs_url="/api/docs", redoc_url=None)
 
 app.add_middleware(
     CORSMiddleware,
@@ -179,6 +181,60 @@ async def run_query(body: RunRequest) -> JSONResponse:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
+@app.post("/api/run/stream")
+async def run_query_stream(body: RunRequest) -> StreamingResponse:
+    """HAMH-RAG pipeline with real-time Server-Sent Events progress stream.
+
+    Events delivered as ``data: <JSON>\\n\\n`` lines:
+        start        — pipeline started
+        tree_attempt — tree-level attempt N / total
+        decomposed   — sub-questions list
+        node_start   — a leaf node is being resolved
+        node_done    — leaf resolved (status, answer, attempts)
+        tree_retry   — whole-tree retry after needs_review
+        result       — full PipelineResult JSON (terminal event)
+        error        — fatal error (terminal event)
+    """
+    import json as _json
+    import queue as _q
+
+    q: _q.Queue = _q.Queue()
+    _SENTINEL = object()
+
+    def _callback(**kwargs):
+        q.put(kwargs)
+
+    def _run():
+        try:
+            result = _pipeline.run(body.query, progress_callback=_callback)
+            q.put({"event": "result", "data": asdict(result)})
+        except Exception as exc:
+            q.put({"event": "error", "message": str(exc)})
+        finally:
+            q.put(_SENTINEL)
+
+    loop = asyncio.get_event_loop()
+    loop.run_in_executor(_executor, _run)
+
+    async def _generate():
+        while True:
+            try:
+                item = q.get_nowait()
+            except _q.Empty:
+                await asyncio.sleep(0.04)
+                continue
+            if item is _SENTINEL:
+                break
+            yield f"data: {_json.dumps(item, default=str)}\n\n"
+
+    return StreamingResponse(
+        _generate(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no",
+                 "Connection": "keep-alive"},
+    )
+
+
 def _run_traditional_sync(query: str) -> dict:
     """Normal RAG: single-hop retrieve + LLM generation, no decomposition or validation."""
     docs = _pipeline.retriever.retrieve(query)
@@ -213,6 +269,47 @@ async def run_rag(body: RunRequest) -> JSONResponse:
         raise HTTPException(status_code=504, detail="RAG timed out.")
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post("/api/run_rag/stream")
+async def run_rag_stream(body: RunRequest) -> StreamingResponse:
+    """Normal RAG with SSE stream — emits start → result events."""
+    import json as _json
+    import queue as _q
+
+    q: _q.Queue = _q.Queue()
+    _SENTINEL = object()
+
+    def _run():
+        try:
+            q.put({"event": "start", "query": body.query})
+            result = _run_traditional_sync(body.query)
+            q.put({"event": "result", "data": result})
+        except Exception as exc:
+            q.put({"event": "error", "message": str(exc)})
+        finally:
+            q.put(_SENTINEL)
+
+    loop = asyncio.get_event_loop()
+    loop.run_in_executor(_executor, _run)
+
+    async def _generate():
+        while True:
+            try:
+                item = q.get_nowait()
+            except _q.Empty:
+                await asyncio.sleep(0.04)
+                continue
+            if item is _SENTINEL:
+                break
+            yield f"data: {_json.dumps(item, default=str)}\n\n"
+
+    return StreamingResponse(
+        _generate(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no",
+                 "Connection": "keep-alive"},
+    )
 
 
 @app.post("/api/compare")

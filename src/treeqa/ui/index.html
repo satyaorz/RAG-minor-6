@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>TreeQA — Multi-Hop RAG</title>
+  <title>HAMH-RAG — Hallucination-Aware Multi-Hop RAG</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
   <style>
     /* ─── Reset & tokens ─────────────────────────────────────────────────── */
@@ -371,13 +371,26 @@
       border-radius:var(--radius); padding:22px; margin-bottom:20px; box-shadow:var(--shadow-sm); }
     .chart-wrap h3 { font-size:.8rem; font-weight:700; text-transform:uppercase;
       letter-spacing:.08em; color:var(--muted); margin-bottom:16px; }
+
+    /* ─── Stream log ─────────────────────────────────────────────────────── */
+    .stream-log {
+      background: #f8fafc; border: 1px dashed var(--border); border-radius: var(--radius-sm);
+      padding: 10px 14px; font-size: .76rem; font-family: monospace;
+      max-height: 180px; overflow-y: auto; margin-bottom: 16px; line-height: 1.7;
+    }
+    .stream-log-entry          { padding: 1px 0; color: #475569; }
+    .stream-log-entry.start    { color: var(--indigo); font-weight: 600; }
+    .stream-log-entry.verified { color: var(--green); }
+    .stream-log-entry.needs_review { color: var(--amber); }
+    .stream-log-entry.retry    { color: #f59e0b; font-weight: 600; }
+    .stream-log-entry.done     { color: var(--green); font-weight: 600; }
   </style>
 </head>
 <body>
 
 <header>
-  <h1>🌳 TreeQA</h1>
-  <p>Hallucination-aware multi-hop retrieval-augmented generation</p>
+  <h1>🔀 HAMH-RAG</h1>
+  <p>Hallucination-Aware Multi-Hop Retrieval-Augmented Generation</p>
 </header>
 
 <main>
@@ -455,12 +468,12 @@
   <!-- Query input -->
   <div class="query-card">
     <label for="query-input">Your question</label>
-    <textarea id="query-input" placeholder="Ask a multi-hop question…">How does TreeQA use hybrid retrieval and validation to reduce hallucinations in multi-hop QA?</textarea>
+    <textarea id="query-input" placeholder="Ask a multi-hop question…">How does HAMH-RAG use hybrid retrieval and validation to reduce hallucinations in multi-hop QA?</textarea>
 
     <!-- Mode switcher -->
     <div class="mode-switcher" style="margin-top:14px">
       <button class="mode-btn active" data-mode="rag"     onclick="setMode('rag')">  ⚡ Normal RAG</button>
-      <button class="mode-btn"        data-mode="treeqa"  onclick="setMode('treeqa')">  🌳 TreeQA</button>
+      <button class="mode-btn"        data-mode="treeqa"  onclick="setMode('treeqa')">  🔀 HAMH-RAG</button>
       <button class="mode-btn"        data-mode="compare" onclick="setMode('compare')">  ⚖ Compare Both</button>
     </div>
 
@@ -481,6 +494,9 @@
     <button id="cancel-btn" onclick="cancelQuery()" style="margin-left:12px;padding:4px 12px;font-size:.85rem;border:1px solid var(--muted);border-radius:6px;background:transparent;color:var(--muted);cursor:pointer;">Cancel</button>
   </div>
 
+  <!-- Stream log (shown while HAMH-RAG or RAG is streaming) -->
+  <div id="stream-log" class="stream-log hidden"></div>
+
   <!-- Error -->
   <div id="error-box" class="error-box hidden"></div>
 
@@ -489,7 +505,7 @@
     <!-- Tab bar -->
     <div class="tab-bar">
       <button class="tab" data-tab="rag"     onclick="switchTab('rag')"     id="tab-rag">⚡ Normal RAG</button>
-      <button class="tab" data-tab="treeqa"  onclick="switchTab('treeqa')"  id="tab-treeqa">🌳 TreeQA</button>
+      <button class="tab" data-tab="treeqa"  onclick="switchTab('treeqa')"  id="tab-treeqa">🔀 HAMH-RAG</button>
       <button class="tab" data-tab="compare" onclick="switchTab('compare')" id="tab-compare">⚖ Compare</button>
       <button class="tab" data-tab="charts"  onclick="switchTab('charts')"  id="tab-charts">📊 Charts</button>
     </div>
@@ -516,7 +532,7 @@
     <div id="pane-compare" class="hidden">
       <div class="compare-banner">
         ℹ️ <strong>Traditional RAG</strong> retrieves top-k docs and generates a direct answer — no decomposition, no retry loop.
-        <strong>TreeQA</strong> decomposes the query, validates each sub-answer, and synthesises a grounded response.
+        <strong>HAMH-RAG</strong> decomposes the query, validates each sub-answer, and synthesises a grounded response.
       </div>
       <div class="diff-explainer">
         <strong>Why do the answers sometimes look identical?</strong>
@@ -525,7 +541,7 @@
         The difference shows up on <strong>bridge questions</strong> — questions where the retrieval
         key for the <em>second</em> hop is hidden inside the answer of the <em>first</em> hop.<br>
         Example: <code>"Where was the director of Inception born?"</code> — Normal RAG searches for
-        "director of Inception birth place" and misses; TreeQA first asks <code>"Who directed Inception?"</code>
+        "director of Inception birth place" and misses; HAMH-RAG first asks <code>"Who directed Inception?"</code>
         → <em>Christopher Nolan</em>, then asks <code>"Where was Christopher Nolan born?"</code>.<br><br>
         Load <strong>2WikiMultiHopQA</strong> or <strong>MuSiQue</strong> (marked 🔥 Hard) and try
         bridge-type questions from the Q&amp;A browser to see the gap clearly.
@@ -539,7 +555,7 @@
     <!-- Charts pane -->
     <div id="pane-charts" class="hidden">
       <div class="chart-wrap" id="chart-method-wrap" style="display:none">
-        <h3>Method Comparison — Traditional RAG vs TreeQA</h3>
+        <h3>Method Comparison — Traditional RAG vs HAMH-RAG</h3>
         <canvas id="chart-method" height="120"></canvas>
       </div>
       <div class="chart-wrap">
@@ -568,8 +584,8 @@
 
   const MODE_HINTS = {
     rag: '<strong>⚡ Normal RAG:</strong> Retrieve relevant passages from your documents, then generate a direct answer with the LLM. Fast, single-hop, no decomposition.',
-    treeqa: '<strong>🌳 TreeQA:</strong> Decomposes the question into sub-queries, retrieves evidence for each, validates answers, and synthesises a grounded multi-hop response.',
-    compare: '<strong>⚖ Compare Both:</strong> Run Normal RAG and TreeQA on the same question and see a side-by-side comparison of answers, confidence, and evidence.',
+    treeqa: '<strong>🔀 HAMH-RAG:</strong> Decomposes the question into sub-queries, retrieves evidence for each, validates answers, and synthesises a grounded multi-hop response.',  
+    compare: '<strong>⚖ Compare Both:</strong> Run Normal RAG and HAMH-RAG on the same question and see a side-by-side comparison of answers, confidence, and evidence.',
   };
 
   /* ── mode switcher ───────────────────────────────────────────────────────────────── */
@@ -580,7 +596,7 @@
     );
     document.getElementById('mode-hint').innerHTML = MODE_HINTS[m] || '';
     const runBtn = document.getElementById('run-btn');
-    runBtn.textContent = m === 'rag' ? '⚡ Run Normal RAG' : m === 'treeqa' ? '🌳 Run TreeQA' : '⚖ Compare Both';
+    runBtn.textContent = m === 'rag' ? '⚡ Run Normal RAG' : m === 'treeqa' ? '🔀 Run HAMH-RAG' : '⚖ Compare Both';
   }
   // init button label
   setMode('rag');
@@ -595,6 +611,7 @@
   function cancelQuery() {
     if (_ctrl) _ctrl.abort();
     clearTimeout(_timer); clearInterval(_ticker);
+    clearStreamLog();
     setLoading(false); setError('Request cancelled.');
   }
 
@@ -637,22 +654,107 @@
     }
   }
 
+  /* ── stream log helpers ─────────────────────────────────────────────── */
+  function clearStreamLog() {
+    const el = document.getElementById('stream-log');
+    if (el) { el.innerHTML = ''; el.classList.add('hidden'); }
+  }
+
+  function appendStreamLog(event) {
+    const el = document.getElementById('stream-log');
+    if (!el) return;
+    const msg = formatStreamEvent(event);
+    if (!msg) return;
+    el.classList.remove('hidden');
+    const entry = document.createElement('div');
+    entry.className = 'stream-log-entry ' + (event.status || event.event || '');
+    entry.textContent = msg;
+    el.appendChild(entry);
+    el.scrollTop = el.scrollHeight;
+  }
+
+  function formatStreamEvent(e) {
+    if (e.event === 'start')        return '▶ Starting HAMH-RAG…';
+    if (e.event === 'tree_attempt') return `🌲 Tree attempt ${e.attempt}/${e.total_attempts}`;
+    if (e.event === 'decomposed')   return `🔀 Decomposed into ${e.total} sub-question(s): ${e.nodes.join(' | ')}`;
+    if (e.event === 'node_start')   return `⏳ [${e.node_id}]: ${e.question}`;
+    if (e.event === 'node_done')    return `${e.status === 'verified' ? '✅' : '⚠️'} [${e.node_id}] ${e.status}`;
+    if (e.event === 'tree_retry')   return `🔁 Retry ${e.attempt}: refined → "${e.refined_query}"`;
+    if (e.event === 'done')         return `🏁 Done (${e.status})`;
+    return null;
+  }
+
+  async function _stream(url, body, onEvent) {
+    _ctrl = new AbortController();
+    clearStreamLog();
+    setLoading(true); setError(null); clearResults();
+
+    _timer = setTimeout(() => {
+      _ctrl.abort(); setLoading(false);
+      setError('Request timed out after 2 minutes. Try a simpler query.');
+    }, CLIENT_TIMEOUT_MS);
+
+    let secs = 0;
+    _ticker = setInterval(() => {
+      secs++;
+      const t = document.getElementById('spinner-text');
+      if (t) t.textContent = `Running… ${secs}s`;
+    }, 1000);
+
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: _ctrl.signal,
+      });
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new Error(e.detail || 'Server error');
+      }
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split('\n');
+        buf = lines.pop() || '';
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try { onEvent(JSON.parse(line.slice(6))); } catch {}
+          }
+        }
+      }
+    } catch (err) {
+      if (err.name !== 'AbortError') setError(err.message);
+    } finally {
+      clearTimeout(_timer); clearInterval(_ticker);
+      const t = document.getElementById('spinner-text');
+      if (t) t.textContent = 'Running pipeline…';
+      setLoading(false);
+    }
+  }
+
   async function runQuery() {
     const query = document.getElementById('query-input').value.trim();
     if (!query) return;
-    const data = await _post('/api/run', { query });
-    if (!data) return;
-    _tqaData = data;
-    showResults(); switchTab('treeqa');
+    await _stream('/api/run/stream', { query }, (event) => {
+      if      (event.event === 'result') { _tqaData = event.data; showResults(); switchTab('treeqa'); }
+      else if (event.event === 'error')  { setError(event.message); }
+      else                               { appendStreamLog(event); }
+    });
   }
 
   async function runRAG() {
     const query = document.getElementById('query-input').value.trim();
     if (!query) return;
-    const data = await _post('/api/run_rag', { query });
-    if (!data) return;
-    _ragData = data;
-    showResults(); switchTab('rag');
+    await _stream('/api/run_rag/stream', { query }, (event) => {
+      if      (event.event === 'result') { _ragData = event.data; showResults(); switchTab('rag'); }
+      else if (event.event === 'error')  { setError(event.message); }
+      else                               { appendStreamLog(event); }
+    });
   }
 
   async function runCompare() {
@@ -778,7 +880,7 @@
     `;
 
     document.getElementById('col-treeqa').innerHTML = `
-      <div class="compare-col-title">🌳 TreeQA (Multi-Hop)</div>
+      <div class="compare-col-title">🔀 HAMH-RAG (Multi-Hop)</div>
       <div class="compare-meta">
         <span class="compare-chip ${tqa.root.status === 'verified' ? 'pass' : 'fail'}">${tqa.root.status === 'verified' ? '✓ Verified' : '⚠ Needs Review'}</span>
         <span class="compare-chip">${tqaDocs} docs · ${tqaNodes.length} nodes</span>
@@ -821,7 +923,7 @@
               borderColor: '#64748b', borderWidth: 1.5, borderRadius: 6,
             },
             {
-              label: 'TreeQA',
+              label: 'HAMH-RAG',
               data: [Math.round(tqaAvg * 100), tqaDocs, tqaNodes.length],
               backgroundColor: 'rgba(99,102,241,.6)',
               borderColor: '#6366f1', borderWidth: 1.5, borderRadius: 6,

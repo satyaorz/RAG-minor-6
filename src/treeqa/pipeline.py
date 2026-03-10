@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import re
+from typing import Callable
+
 from treeqa.agents import (
     AnswerGenerator,
     AnswerValidator,
@@ -11,6 +14,13 @@ from treeqa.config import TreeQASettings
 from treeqa.models import PipelineResult, QueryNode, ValidationResult
 from treeqa.retrieval import HybridRetriever
 from treeqa.state import WorkflowState
+
+# Callable[[str, **Any], None] — pipeline events are keyword-only
+ProgressCallback = Callable[..., None]
+
+
+def _noop(**_kwargs) -> None:
+    pass
 
 
 class TreeQAPipeline:
@@ -35,26 +45,85 @@ class TreeQAPipeline:
         self.corrector = corrector or CorrectionEngine(llm_client=llm_client)
         self.generator = generator or AnswerGenerator(llm_client=llm_client)
 
-    def run(self, query: str) -> PipelineResult:
-        root = self.decomposer.decompose(query)
-        state = WorkflowState(query=query, root=root, nodes=self._flatten_leaves(root))
-        self._resolve_tree(state.root)
-        state.nodes = self._flatten_leaves(state.root)
-        state.final_answer = state.root.answer or self.generator.generate_final(state.query, state.nodes)
-        return PipelineResult(
-            query=state.query,
-            root=state.root,
-            nodes=state.nodes,
-            final_answer=state.final_answer,
-        )
+    # ------------------------------------------------------------------
+    # Public interface
+    # ------------------------------------------------------------------
 
-    def _resolve_tree(self, node: QueryNode, prior_hops: list[tuple[str, str]] | None = None) -> None:
+    def run(self, query: str, progress_callback: ProgressCallback | None = None) -> PipelineResult:
+        """Run HAMH-RAG on *query*, optionally streaming progress events via *progress_callback*.
+
+        Tree-level retry: if the fully resolved tree status is ``needs_review``
+        and ``settings.tree_retries > 0``, the query is refined by the corrector,
+        the decomposition tree is re-built, and the pipeline re-runs up to
+        ``tree_retries`` additional times.
+
+        *progress_callback* is called with keyword arguments:
+            event (str)    — one of start / tree_attempt / decomposed /
+                             node_start / node_done / tree_retry / done
+            plus event-specific fields (question, nodes, status, answer, …)
+        """
+        _cb: ProgressCallback = progress_callback or _noop
+
+        _cb(event="start", query=query)
+
+        active_query = query
+        result: PipelineResult | None = None
+
+        for tree_attempt in range(self.settings.tree_retries + 1):
+            if tree_attempt > 0:
+                # Refine the root query and rebuild the decomposition tree
+                active_query = self.corrector.refine(active_query, tree_attempt)
+                _cb(event="tree_retry", attempt=tree_attempt, refined_query=active_query)
+
+            _cb(event="tree_attempt", attempt=tree_attempt + 1,
+                total_attempts=self.settings.tree_retries + 1)
+
+            root = self.decomposer.decompose(active_query)
+            state = WorkflowState(
+                query=active_query, root=root, nodes=self._flatten_leaves(root)
+            )
+            _cb(event="decomposed",
+                nodes=[n.question for n in state.nodes],
+                total=len(state.nodes))
+
+            self._resolve_tree(state.root, progress_callback=_cb)
+            state.nodes = self._flatten_leaves(state.root)
+            state.final_answer = (
+                state.root.answer
+                or self.generator.generate_final(state.query, state.nodes)
+            )
+
+            result = PipelineResult(
+                query=state.query,
+                root=state.root,
+                nodes=state.nodes,
+                final_answer=state.final_answer,
+            )
+
+            # Exit early if the tree was fully verified
+            if state.root.status == "verified":
+                break
+
+        _cb(event="done", answer=result.final_answer, status=result.root.status)  # type: ignore[union-attr]
+        return result  # type: ignore[return-value]
+
+    # ------------------------------------------------------------------
+    # Tree / leaf resolution
+    # ------------------------------------------------------------------
+
+    def _resolve_tree(
+        self,
+        node: QueryNode,
+        prior_hops: list[tuple[str, str]] | None = None,
+        progress_callback: ProgressCallback | None = None,
+    ) -> None:
+        _cb: ProgressCallback = progress_callback or _noop
         if prior_hops is None:
             prior_hops = []
         if node.children:
             accumulated: list[tuple[str, str]] = list(prior_hops)
             for child in node.children:
-                self._resolve_tree(child, accumulated)
+                self._resolve_tree(child, accumulated, progress_callback=_cb)
                 if child.answer:
                     accumulated.append((child.question, self._strip_sources(child.answer)))
             node.answer = self.generator.generate_final(node.question, node.children)
@@ -72,14 +141,21 @@ class TreeQAPipeline:
             if confidences:
                 node.validation = self._build_group_validation(node.status, confidences)
             return
-        self._resolve_leaf(node, prior_hops)
+        self._resolve_leaf(node, prior_hops, progress_callback=_cb)
 
-    def _resolve_leaf(self, node: QueryNode, prior_hops: list[tuple[str, str]] | None = None) -> None:
+    def _resolve_leaf(
+        self,
+        node: QueryNode,
+        prior_hops: list[tuple[str, str]] | None = None,
+        progress_callback: ProgressCallback | None = None,
+    ) -> None:
+        _cb: ProgressCallback = progress_callback or _noop
         prior_hops = prior_hops or []
-        # Enrich the retrieval query with concrete answers from previous hops.
-        # e.g. sub-q2 = "When is the composer's birthday?" + " K. V. Mahadevan" (from hop 1)
         base_question = node.question
         retrieval_question = self._enrich_query(base_question, prior_hops)
+
+        _cb(event="node_start", node_id=node.node_id, question=base_question)
+
         for attempt in range(self.settings.max_retries + 1):
             node.attempts = attempt + 1
             node.documents = self.retriever.retrieve(retrieval_question)
@@ -89,9 +165,22 @@ class TreeQAPipeline:
             node.validation = self.validator.validate(node.answer, node.documents)
             if node.validation.passed:
                 node.status = "verified"
-                return
+                break
             retrieval_question = self.corrector.refine(retrieval_question, node.attempts)
-        node.status = "needs_review"
+
+        if not node.validation or not node.validation.passed:
+            node.status = "needs_review"
+
+        _cb(event="node_done",
+            node_id=node.node_id,
+            question=base_question,
+            status=node.status,
+            answer=self._strip_sources(node.answer),
+            attempts=node.attempts)
+
+    # ------------------------------------------------------------------
+    # Static utilities
+    # ------------------------------------------------------------------
 
     @staticmethod
     def _enrich_query(question: str, prior_hops: list[tuple[str, str]]) -> str:
@@ -104,7 +193,6 @@ class TreeQAPipeline:
 
     @staticmethod
     def _strip_sources(text: str) -> str:
-        import re
         return re.sub(r"\s*Sources:\s.*$", "", text, flags=re.IGNORECASE).strip()
 
     def _flatten_leaves(self, root: QueryNode) -> list[QueryNode]:

@@ -242,6 +242,136 @@ class LocalVectorBackend:
         return rows
 
 
+class FaissVectorBackend:
+    """FAISS-backed retrieval: loads a pre-built ANN index from disk (no re-encoding at startup).
+
+    The index is created by ``ingest.build_local_indices()`` and stored next to the JSONL file
+    as ``vector_index.faiss`` + ``vector_meta.json``.  On subsequent server restarts the model
+    only has to encode the incoming *query* — all document embeddings are already on disk.
+
+    Search strategy: same RRF hybrid (FAISS semantic + IDF-weighted lexical) as LocalVectorBackend.
+    """
+
+    def __init__(self, faiss_path: str, meta_path: str, embedding_model: str = "all-MiniLM-L6-v2") -> None:
+        import faiss  # type: ignore
+
+        self._index = faiss.read_index(str(faiss_path))
+        self.documents: list[dict] = json.loads(Path(meta_path).read_text(encoding="utf-8"))
+        self._idf = self._build_idf()
+        try:
+            from sentence_transformers import SentenceTransformer  # type: ignore
+            self._model = SentenceTransformer(embedding_model)
+        except ImportError:
+            self._model = None  # type: ignore
+
+    # ------------------------------------------------------------------
+    # Initialisation helpers (shared logic with LocalVectorBackend)
+    # ------------------------------------------------------------------
+
+    def _build_idf(self) -> dict[str, float]:
+        import math
+        from treeqa.retrieval.scoring import tokenize
+
+        df: dict[str, int] = {}
+        N = len(self.documents)
+        for record in self.documents:
+            for tok in set(tokenize(self._scoring_text(record))):
+                df[tok] = df.get(tok, 0) + 1
+        return {tok: math.log(N / count) for tok, count in df.items()}
+
+    @staticmethod
+    def _scoring_text(record: dict) -> str:
+        title = str(record.get("title", "")).strip()
+        section = str(record.get("section", "")).strip()
+        content = normalize_text(str(record.get("content", "")))
+        return " ".join(filter(None, [title, section, content]))
+
+    @staticmethod
+    def _source_id(record: dict) -> str:
+        sid = str(record.get("source_id", ""))
+        section = str(record.get("section", "")).strip()
+        return f"{sid} [{section}]" if section else sid
+
+    # ------------------------------------------------------------------
+    # Public interface
+    # ------------------------------------------------------------------
+
+    def search(self, question: str, limit: int) -> list[RetrievedDocument]:
+        if self._model is not None:
+            return self._hybrid_search(question, limit)
+        return self._lexical_search(question, limit)
+
+    def _hybrid_search(self, question: str, limit: int) -> list[RetrievedDocument]:
+        """RRF fusion of FAISS ANN semantic search + IDF-weighted lexical search."""
+        candidate_k = max(limit * 5, 20)
+        sem = self._semantic_search(question, candidate_k)
+        lex = self._lexical_search(question, candidate_k)
+
+        RRF_K = 60
+        scores: dict[str, float] = {}
+        docs_by_id: dict[str, RetrievedDocument] = {}
+
+        for rank, doc in enumerate(sem):
+            scores[doc.source_id] = scores.get(doc.source_id, 0.0) + 1.0 / (RRF_K + rank + 1)
+            docs_by_id[doc.source_id] = doc
+
+        for rank, doc in enumerate(lex):
+            scores[doc.source_id] = scores.get(doc.source_id, 0.0) + 1.0 / (RRF_K + rank + 1)
+            docs_by_id.setdefault(doc.source_id, doc)
+
+        ranked = sorted(scores.items(), key=lambda x: x[1], reverse=True)[:limit]
+        return [docs_by_id[sid] for sid, _ in ranked]
+
+    def _semantic_search(self, question: str, limit: int) -> list[RetrievedDocument]:
+        import numpy as np
+
+        q_emb = self._model.encode([question], convert_to_numpy=True, normalize_embeddings=True)
+        q_emb = q_emb.astype("float32")
+        distances, indices = self._index.search(q_emb, limit)
+
+        results: list[RetrievedDocument] = []
+        for score, idx in zip(distances[0], indices[0]):
+            if idx < 0:  # FAISS returns -1 for padded slots
+                continue
+            record = self.documents[int(idx)]
+            results.append(
+                RetrievedDocument(
+                    source_id=self._source_id(record),
+                    source_type="vector",
+                    content=normalize_text(str(record.get("content", ""))),
+                    score=float(score),
+                )
+            )
+        return results
+
+    def _lexical_search(self, question: str, limit: int) -> list[RetrievedDocument]:
+        """IDF-weighted term matching (identical logic to LocalVectorBackend)."""
+        from treeqa.retrieval.scoring import tokenize
+
+        q_tokens = tokenize(question)
+        if not q_tokens:
+            return []
+
+        token_weights = {tok: self._idf.get(tok, 0.0) for tok in q_tokens}
+        max_possible = sum(token_weights.values()) or 1.0
+
+        results: list[RetrievedDocument] = []
+        for record in self.documents:
+            doc_tokens = set(tokenize(self._scoring_text(record)))
+            raw_score = sum(w for tok, w in token_weights.items() if tok in doc_tokens)
+            if raw_score <= 0:
+                continue
+            results.append(
+                RetrievedDocument(
+                    source_id=self._source_id(record),
+                    source_type="vector",
+                    content=normalize_text(str(record.get("content", ""))),
+                    score=raw_score / max_possible,
+                )
+            )
+        return sorted(results, key=lambda d: d.score, reverse=True)[:limit]
+
+
 def build_vector_backend(settings: TreeQASettings) -> VectorBackend:
     provider = settings.vector_provider.strip().lower()
     if provider in {"", "memory"}:
@@ -252,6 +382,14 @@ def build_vector_backend(settings: TreeQASettings) -> VectorBackend:
             if settings.local_vector_index_path
             else settings.resolved_data_dir / "index" / "vector_index.jsonl"
         )
+        faiss_path = Path(str(index_path)).with_suffix(".faiss")
+        meta_path = Path(str(index_path)).with_name("vector_meta.json")
+        if faiss_path.exists() and meta_path.exists():
+            return FaissVectorBackend(
+                faiss_path=str(faiss_path),
+                meta_path=str(meta_path),
+                embedding_model=settings.embedding_model,
+            )
         return LocalVectorBackend(
             index_path=str(index_path),
             embedding_model=settings.embedding_model,
