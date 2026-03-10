@@ -44,6 +44,7 @@ class TreeQASettings:
     vector_collection: str = ""
     vector_api_key: str = ""
     local_vector_index_path: str = ""
+    embedding_model: str = "all-MiniLM-L6-v2"
     graph_store_url: str = ""
     graph_provider: str = "memory"
     graph_database: str = ""
@@ -94,6 +95,7 @@ class TreeQASettings:
             vector_collection=os.getenv("TREEQA_VECTOR_COLLECTION", ""),
             vector_api_key=os.getenv("TREEQA_VECTOR_API_KEY", ""),
             local_vector_index_path=os.getenv("TREEQA_LOCAL_VECTOR_INDEX_PATH", ""),
+            embedding_model=os.getenv("TREEQA_EMBEDDING_MODEL", "all-MiniLM-L6-v2"),
             graph_store_url=os.getenv("GRAPH_STORE_URL", ""),
             graph_provider=os.getenv("TREEQA_GRAPH_PROVIDER", "memory"),
             graph_database=os.getenv("TREEQA_GRAPH_DATABASE", ""),

@@ -116,13 +116,19 @@ async def upload_document(file: UploadFile = File(...)) -> JSONResponse:
     dest.write_bytes(content)
 
     loop = asyncio.get_event_loop()
-    await loop.run_in_executor(_executor, build_local_indices, _settings)
+    report = await loop.run_in_executor(_executor, build_local_indices, _settings)
     _reload_pipeline()
     return JSONResponse(content={
         "ok": True,
         "filename": safe_name,
         "size": len(content),
-        "message": f"'{safe_name}' ingested and index updated.",
+        "vector_chunks": report.vector_chunks,
+        "graph_facts": report.graph_facts,
+        "message": (
+            f"'{safe_name}' ingested — "
+            f"{report.vector_chunks} vector chunks (unstructured) + "
+            f"{report.graph_facts} graph facts (structured) indexed."
+        ),
     })
 
 
@@ -145,29 +151,39 @@ async def run_query(body: RunRequest) -> JSONResponse:
 
 
 def _run_traditional_sync(query: str) -> dict:
-    """Traditional RAG baseline: retrieve only, no LLM generation or validation.
-
-    Represents the simplest RAG approach — keyword search returns top documents
-    and concatenates their content as the "answer".  No multi-hop decomposition,
-    no hallucination validation, no confidence scoring from an LLM.
-    """
+    """Normal RAG: single-hop retrieve + LLM generation, no decomposition or validation."""
     docs = _pipeline.retriever.retrieve(query)
-    # Directly use retrieved content — no LLM call, representing the naive baseline
     if docs:
         top_score = round(docs[0].score, 4)
-        answer = " … ".join(d.content[:300].strip() for d in docs[:3])
+        answer = _pipeline.generator.generate_for_node(query, docs)
     else:
         top_score = 0.0
         answer = "No relevant documents found."
     return {
         "query": query,
         "answer": answer,
-        "confidence": top_score,          # retrieval score as proxy confidence
+        "confidence": top_score,
         "passed": top_score >= 0.5,
-        "rationale": f"Returned top {len(docs)} document(s) by retrieval score. No LLM generation or hallucination check.",
+        "rationale": f"Single-hop retrieval + LLM generation over top {len(docs)} document(s). No query decomposition or hallucination validation.",
         "doc_count": len(docs),
         "documents": [asdict(d) for d in docs],
     }
+
+
+@app.post("/api/run_rag")
+async def run_rag(body: RunRequest) -> JSONResponse:
+    """Normal RAG: single-hop retrieve + LLM generate. No decomposition."""
+    loop = asyncio.get_event_loop()
+    try:
+        result = await asyncio.wait_for(
+            loop.run_in_executor(_executor, _run_traditional_sync, body.query),
+            timeout=_PIPELINE_TIMEOUT,
+        )
+        return JSONResponse(content=result)
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=504, detail="RAG timed out.")
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @app.post("/api/compare")

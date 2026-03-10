@@ -19,16 +19,86 @@ def main() -> None:
     )
     query = st.text_area("Question", value=default_query, height=120)
 
-    if st.button("Run workflow", type="primary"):
+    mode = st.radio(
+        "Mode",
+        ["⚡ Normal RAG", "🌳 TreeQA", "⚖ Compare Both"],
+        horizontal=True,
+        help=(
+            "Normal RAG: single-hop retrieve + LLM answer. "
+            "TreeQA: decompose → retrieve → validate → synthesise. "
+            "Compare: run both side-by-side."
+        ),
+    )
+
+    run_label = {"⚡ Normal RAG": "Run Normal RAG", "🌳 TreeQA": "Run TreeQA", "⚖ Compare Both": "Compare Both"}[mode]
+
+    if st.button(run_label, type="primary"):
         pipeline = TreeQAPipeline()
-        result = pipeline.run(query)
-        st.subheader("Final answer")
-        st.write(result.final_answer)
-        _render_summary(result.root)
-        st.subheader("Logic tree")
-        _render_node(result.root)
-        st.subheader("Raw payload")
-        st.json(asdict(result))
+
+        if mode == "⚡ Normal RAG":
+            _render_rag(pipeline, query)
+
+        elif mode == "🌳 TreeQA":
+            result = pipeline.run(query)
+            st.subheader("Final answer")
+            st.write(result.final_answer)
+            _render_summary(result.root)
+            st.subheader("Logic tree")
+            _render_node(result.root)
+            st.subheader("Raw payload")
+            st.json(asdict(result))
+
+        else:  # Compare Both
+            col_rag, col_tqa = st.columns(2)
+            docs = pipeline.retriever.retrieve(query)
+            rag_answer = pipeline.generator.generate_for_node(query, docs)
+
+            with col_rag:
+                st.subheader("⚡ Normal RAG")
+                st.info(rag_answer)
+                top_score = docs[0].score if docs else 0.0
+                st.caption(f"Retrieval confidence: {top_score:.2%} · {len(docs)} doc(s) · no decomposition")
+                with st.expander("Retrieved documents"):
+                    for doc in docs:
+                        st.markdown(f"- `{doc.source_type}:{doc.source_id}` score `{doc.score:.3f}`")
+                        st.write(doc.content[:400])
+
+            with col_tqa:
+                st.subheader("🌳 TreeQA")
+                result = pipeline.run(query)
+                st.success(result.final_answer)
+                nodes = result.root.iter_nodes()
+                verified = sum(1 for n in nodes if n.status == "verified")
+                st.caption(f"Status: {result.root.status} · {verified} node(s) verified")
+                _render_summary(result.root)
+
+            st.subheader("Full TreeQA logic tree")
+            _render_node(result.root)
+
+
+def _render_rag(pipeline: TreeQAPipeline, query: str) -> None:
+    """Render Normal RAG results: LLM answer + retrieved evidence."""
+    docs = pipeline.retriever.retrieve(query)
+    answer = pipeline.generator.generate_for_node(query, docs)
+
+    st.subheader("⚡ Normal RAG Answer")
+    st.write(answer)
+
+    if docs:
+        top_score = docs[0].score
+        st.caption(
+            f"Retrieval confidence: {top_score:.2%} · "
+            f"{len(docs)} document(s) retrieved · "
+            "no query decomposition or hallucination validation"
+        )
+
+    st.subheader(f"Retrieved Evidence ({len(docs)} document(s))")
+    for doc in docs:
+        with st.expander(
+            f"{doc.source_type}:{doc.source_id}  —  score {doc.score:.3f}",
+            expanded=False,
+        ):
+            st.write(doc.content)
 
 
 def _render_summary(root: QueryNode) -> None:

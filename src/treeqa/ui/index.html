@@ -253,6 +253,20 @@
       color:var(--muted); cursor:pointer; user-select:none; }
     .compare-toggle input { accent-color:var(--indigo); width:15px; height:15px; cursor:pointer; }
 
+    /* ─── Mode switcher ──────────────────────────────────────────────────── */
+    .mode-switcher { display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap; }
+    .mode-btn {
+      flex:1; min-width:140px; padding:10px 16px; border:1.5px solid var(--border);
+      border-radius:var(--radius-sm); background:var(--surface); font-size:.875rem;
+      font-weight:600; font-family:inherit; color:var(--muted); cursor:pointer;
+      transition:all .18s; text-align:center;
+    }
+    .mode-btn:hover { border-color:var(--indigo); color:var(--indigo); background:var(--indigo-lt); }
+    .mode-btn.active { border-color:var(--indigo); color:var(--indigo); background:var(--indigo-lt); }
+    .mode-hint { font-size:.8rem; color:var(--muted); margin-bottom:14px;
+      padding:8px 12px; background:var(--bg); border-radius:var(--radius-sm);
+      border:1px dashed var(--border); line-height:1.5; }
+
     /* ─── Tabs ───────────────────────────────────────────────────────────── */
     .tab-bar { display:flex; gap:4px; margin-bottom:24px; border-bottom:2px solid var(--border); }
     .tab { background:none; border:none; border-bottom:2.5px solid transparent;
@@ -306,7 +320,7 @@
         <div class="drop-zone-icon">📁</div>
         <div class="drop-zone-text">
           <strong>Choose .txt or .md files</strong> or drag &amp; drop here<br>
-          <small style="color:var(--muted);margin-top:4px;display:block;">Files are automatically ingested into the retrieval index.</small>
+          <small style="color:var(--muted);margin-top:4px;display:block;">Files are automatically ingested into both the <strong>vector index</strong> (unstructured, embedding-based) and the <strong>graph index</strong> (structured facts).</small>
         </div>
       </div>
       <div id="upload-status"></div>
@@ -321,12 +335,21 @@
   <div class="query-card">
     <label for="query-input">Your question</label>
     <textarea id="query-input" placeholder="Ask a multi-hop question…">How does TreeQA use hybrid retrieval and validation to reduce hallucinations in multi-hop QA?</textarea>
+
+    <!-- Mode switcher -->
+    <div class="mode-switcher" style="margin-top:14px">
+      <button class="mode-btn active" data-mode="rag"     onclick="setMode('rag')">  ⚡ Normal RAG</button>
+      <button class="mode-btn"        data-mode="treeqa"  onclick="setMode('treeqa')">  🌳 TreeQA</button>
+      <button class="mode-btn"        data-mode="compare" onclick="setMode('compare')">  ⚖ Compare Both</button>
+    </div>
+
+    <div class="mode-hint" id="mode-hint">
+      <strong>⚡ Normal RAG:</strong> Retrieve relevant passages from your documents, then generate a direct answer with the LLM. Fast, single-hop, no decomposition.
+    </div>
+
     <div class="query-row">
       <button class="btn-run" id="run-btn" onclick="handleRun()">Run ▶</button>
-      <label class="compare-toggle">
-        <input type="checkbox" id="compare-mode"> Compare with traditional RAG
-      </label>
-      <span class="query-hint">Queries with "and" or "then" are automatically decomposed.</span>
+      <span class="query-hint">Ctrl+Enter also runs the query.</span>
     </div>
   </div>
 
@@ -344,9 +367,20 @@
   <div id="results" class="hidden">
     <!-- Tab bar -->
     <div class="tab-bar">
-      <button class="tab active" data-tab="treeqa"  onclick="switchTab('treeqa')">🌳 TreeQA</button>
-      <button class="tab"        data-tab="compare" onclick="switchTab('compare')" id="tab-compare">⚖ Compare</button>
-      <button class="tab"        data-tab="charts"  onclick="switchTab('charts')">📊 Charts</button>
+      <button class="tab" data-tab="rag"     onclick="switchTab('rag')"     id="tab-rag">⚡ Normal RAG</button>
+      <button class="tab" data-tab="treeqa"  onclick="switchTab('treeqa')"  id="tab-treeqa">🌳 TreeQA</button>
+      <button class="tab" data-tab="compare" onclick="switchTab('compare')" id="tab-compare">⚖ Compare</button>
+      <button class="tab" data-tab="charts"  onclick="switchTab('charts')"  id="tab-charts">📊 Charts</button>
+    </div>
+
+    <!-- Normal RAG pane -->
+    <div id="pane-rag" class="hidden">
+      <div class="compare-banner">
+        ⚡ <strong>Normal RAG</strong> — documents are retrieved from your <strong>vector index (unstructured)</strong> and <strong>graph index (structured)</strong>, then sent to the LLM for a single-shot answer. No query decomposition or hallucination validation.
+      </div>
+      <div class="answer-card" id="rag-answer-card"></div>
+      <div class="section-heading" style="margin-top:20px">Retrieved Evidence</div>
+      <div id="rag-docs-container"></div>
     </div>
 
     <!-- TreeQA pane -->
@@ -393,13 +427,36 @@
   let _ctrl    = null;   // AbortController
   let _timer   = null;   // auto-abort timer
   let _ticker  = null;   // elapsed second ticker
+  let _mode    = 'rag';  // current selected mode
+  let _ragData  = null;  // last Normal RAG result
   let _tqaData  = null;  // last TreeQA PipelineResult
-  let _tradData = null;  // last traditional RAG result
+  let _tradData = null;  // last traditional RAG result (from /api/compare)
   let _charts   = {};    // live Chart.js instances keyed by canvas id
 
-  /* ── run / cancel ───────────────────────────────────────────────────── */
+  const MODE_HINTS = {
+    rag: '<strong>⚡ Normal RAG:</strong> Retrieve relevant passages from your documents, then generate a direct answer with the LLM. Fast, single-hop, no decomposition.',
+    treeqa: '<strong>🌳 TreeQA:</strong> Decomposes the question into sub-queries, retrieves evidence for each, validates answers, and synthesises a grounded multi-hop response.',
+    compare: '<strong>⚖ Compare Both:</strong> Run Normal RAG and TreeQA on the same question and see a side-by-side comparison of answers, confidence, and evidence.',
+  };
+
+  /* ── mode switcher ───────────────────────────────────────────────────────────────── */
+  function setMode(m) {
+    _mode = m;
+    document.querySelectorAll('.mode-btn').forEach(b =>
+      b.classList.toggle('active', b.dataset.mode === m)
+    );
+    document.getElementById('mode-hint').innerHTML = MODE_HINTS[m] || '';
+    const runBtn = document.getElementById('run-btn');
+    runBtn.textContent = m === 'rag' ? '⚡ Run Normal RAG' : m === 'treeqa' ? '🌳 Run TreeQA' : '⚖ Compare Both';
+  }
+  // init button label
+  setMode('rag');
+
+  /* ── run / cancel ───────────────────────────────────────────────────────────────── */
   function handleRun() {
-    document.getElementById('compare-mode').checked ? runCompare() : runQuery();
+    if (_mode === 'rag')     runRAG();
+    else if (_mode === 'treeqa') runQuery();
+    else                    runCompare();
   }
 
   function cancelQuery() {
@@ -452,8 +509,17 @@
     if (!query) return;
     const data = await _post('/api/run', { query });
     if (!data) return;
-    _tqaData = data; _tradData = null;
+    _tqaData = data;
     showResults(); switchTab('treeqa');
+  }
+
+  async function runRAG() {
+    const query = document.getElementById('query-input').value.trim();
+    if (!query) return;
+    const data = await _post('/api/run_rag', { query });
+    if (!data) return;
+    _ragData = data;
+    showResults(); switchTab('rag');
   }
 
   async function runCompare() {
@@ -467,20 +533,28 @@
 
   /* ── tabs ───────────────────────────────────────────────────────────── */
   function switchTab(name) {
-    ['treeqa', 'compare', 'charts'].forEach(t => {
+    ['rag', 'treeqa', 'compare', 'charts'].forEach(t => {
       document.getElementById('pane-' + t).classList.toggle('hidden', t !== name);
-      document.querySelector(`[data-tab="${t}"]`).classList.toggle('active', t === name);
+      document.getElementById('tab-'  + t).classList.toggle('active', t === name);
     });
     if (name === 'charts') renderCharts();
   }
 
   /* ── results ────────────────────────────────────────────────────────── */
   function showResults() {
-    renderTreeQAPane(_tqaData);
-    const cmpBtn = document.getElementById('tab-compare');
-    cmpBtn.style.opacity       = _tradData ? '1' : '.4';
-    cmpBtn.style.pointerEvents = _tradData ? '' : 'none';
+    // render whichever panes have data
+    if (_ragData)  renderRAGPane(_ragData);
+    if (_tqaData)  renderTreeQAPane(_tqaData);
     if (_tradData) renderComparePane(_tradData, _tqaData);
+
+    // enable only tabs that have data
+    const hasData = { rag: !!_ragData, treeqa: !!_tqaData, compare: !!_tradData, charts: !!(_ragData || _tqaData) };
+    ['rag', 'treeqa', 'compare', 'charts'].forEach(t => {
+      const btn = document.getElementById('tab-' + t);
+      btn.style.opacity       = hasData[t] ? '1' : '.35';
+      btn.style.pointerEvents = hasData[t] ? '' : 'none';
+    });
+
     document.getElementById('results').classList.remove('hidden');
   }
 
@@ -507,6 +581,40 @@
     const container = document.getElementById('tree-container');
     container.innerHTML = '';
     container.appendChild(renderNode(data.root));
+  }
+
+  function renderRAGPane(data) {
+    const pct = Math.round((data.confidence || 0) * 100);
+    const cls = pct >= 70 ? 'high' : pct >= 40 ? 'medium' : 'low';
+    document.getElementById('rag-answer-card').innerHTML = `
+      <h2>⚡ Normal RAG Answer</h2>
+      <p>${esc(data.answer)}</p>
+      <div class="conf-bar-wrap" style="margin-top:14px">
+        <div class="conf-bar-track"><div class="conf-bar-fill ${cls}" style="width:${pct}%"></div></div>
+        <span class="conf-label">${pct}% retrieval confidence</span>
+      </div>
+      <div class="rationale" style="margin-top:10px">${esc(data.rationale)}</div>
+    `;
+    const container = document.getElementById('rag-docs-container');
+    container.innerHTML = '';
+    (data.documents || []).forEach(doc => {
+      const card = el('div', { className: 'node-card' });
+      card.innerHTML = `
+        <div class="node-header">
+          <div class="connector" style="background:var(--indigo)"></div>
+          <div class="node-body">
+            <div class="doc-meta">
+              <span class="doc-source">${esc(doc.source_type)}:${esc(doc.source_id)}</span>
+              <span class="doc-score">score ${(doc.score || 0).toFixed(3)}</span>
+            </div>
+            <div style="margin-top:8px;font-size:.9rem;line-height:1.6;color:#334155">
+              ${esc((doc.content || '').substring(0, 400))}${(doc.content || '').length > 400 ? '…' : ''}
+            </div>
+          </div>
+        </div>
+      `;
+      container.appendChild(card);
+    });
   }
 
   function renderComparePane(trad, tqa) {
@@ -707,22 +815,30 @@
     }
     status.textContent = `Uploading ${valid.length} file(s)…`;
     status.className = 'upload-status ok';
-    let ok = 0; const errors = [];
+    let ok = 0; const errors = []; const lastReport = { vector_chunks: 0, graph_facts: 0 };
     for (const file of valid) {
       const fd = new FormData();
       fd.append('file', file);
       try {
         const res = await fetch('/api/upload', { method: 'POST', body: fd });
-        if (res.ok) { ok++; }
-        else {
+        if (res.ok) {
+          ok++;
+          const json = await res.json().catch(() => ({}));
+          if (json.vector_chunks !== undefined) {
+            lastReport.vector_chunks += json.vector_chunks;
+            lastReport.graph_facts   += json.graph_facts;
+          }
+        } else {
           const e = await res.json().catch(() => ({ detail: res.statusText }));
           errors.push(`${file.name}: ${e.detail}`);
         }
       } catch (e) { errors.push(`${file.name}: network error`); }
     }
-    status.textContent = errors.length
+    status.innerHTML = errors.length
       ? '⚠ ' + errors.join('; ')
-      : `✓ ${ok} file(s) uploaded and ingested. Reload to query new content.`;
+      : `✓ ${ok} file(s) uploaded &amp; ingested — ` +
+        `<strong>${lastReport.vector_chunks}</strong> vector chunks (unstructured) + ` +
+        `<strong>${lastReport.graph_facts}</strong> graph facts (structured) indexed.`;
     status.className = errors.length ? 'upload-status err' : 'upload-status ok';
     loadDocuments();
   }
