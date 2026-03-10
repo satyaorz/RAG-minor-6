@@ -91,6 +91,7 @@ class LocalVectorBackend:
                 f"Local vector index not found at {self.index_path}. Run `python -m treeqa.cli ingest`."
             )
         self.documents = self._load_index()
+        self._idf = self._build_idf()
         self._model, self._doc_embeddings = self._build_embeddings(embedding_model)
 
     # ------------------------------------------------------------------
@@ -108,6 +109,19 @@ class LocalVectorBackend:
         texts = [self._scoring_text(r) for r in self.documents]
         embeddings = model.encode(texts, convert_to_numpy=True, normalize_embeddings=True)
         return model, embeddings
+
+    def _build_idf(self) -> dict[str, float]:
+        """Build IDF table: log(N / df) for every token across all documents."""
+        import math
+        from treeqa.retrieval.scoring import tokenize
+
+        df: dict[str, int] = {}
+        N = len(self.documents)
+        for record in self.documents:
+            unique_tokens = set(tokenize(self._scoring_text(record)))
+            for tok in unique_tokens:
+                df[tok] = df.get(tok, 0) + 1
+        return {tok: math.log(N / count) for tok, count in df.items()}
 
     @staticmethod
     def _scoring_text(record: dict) -> str:
@@ -128,8 +142,36 @@ class LocalVectorBackend:
 
     def search(self, question: str, limit: int) -> list[RetrievedDocument]:
         if self._model is not None and self._doc_embeddings is not None:
-            return self._semantic_search(question, limit)
+            return self._hybrid_search(question, limit)
         return self._lexical_search(question, limit)
+
+    def _hybrid_search(self, question: str, limit: int) -> list[RetrievedDocument]:
+        """Reciprocal Rank Fusion of semantic + lexical results.
+
+        Fetches `candidate_k` candidates from each source, fuses by RRF score
+        (score = Σ 1/(k + rank)), then returns the top `limit` unique docs.
+        This ensures exact-match rare terms (e.g. uncommon proper nouns) are
+        always surfaced even when semantic similarity ranks them poorly.
+        """
+        candidate_k = max(limit * 5, 20)
+        sem = self._semantic_search(question, candidate_k)
+        lex = self._lexical_search(question, candidate_k)
+
+        # RRF constant – standard value
+        RRF_K = 60
+        scores: dict[str, float] = {}
+        docs_by_id: dict[str, RetrievedDocument] = {}
+
+        for rank, doc in enumerate(sem):
+            scores[doc.source_id] = scores.get(doc.source_id, 0.0) + 1.0 / (RRF_K + rank + 1)
+            docs_by_id[doc.source_id] = doc
+
+        for rank, doc in enumerate(lex):
+            scores[doc.source_id] = scores.get(doc.source_id, 0.0) + 1.0 / (RRF_K + rank + 1)
+            docs_by_id.setdefault(doc.source_id, doc)
+
+        ranked = sorted(scores.items(), key=lambda x: x[1], reverse=True)[:limit]
+        return [docs_by_id[sid] for sid, _ in ranked]
 
     # ------------------------------------------------------------------
     # Search implementations
@@ -160,17 +202,29 @@ class LocalVectorBackend:
         return results
 
     def _lexical_search(self, question: str, limit: int) -> list[RetrievedDocument]:
+        """IDF-weighted term matching — rare query terms (low df) score higher."""
+        from treeqa.retrieval.scoring import tokenize
+
+        q_tokens = tokenize(question)
+        if not q_tokens:
+            return []
+
+        # For each query token, look up its IDF weight (rare = high weight)
+        token_weights = {tok: self._idf.get(tok, 0.0) for tok in q_tokens}
+        max_possible = sum(token_weights.values()) or 1.0
+
         results: list[RetrievedDocument] = []
         for record in self.documents:
-            content = normalize_text(str(record.get("content", "")))
-            score = lexical_score(question, self._scoring_text(record))
-            if score <= 0:
+            doc_tokens = set(tokenize(self._scoring_text(record)))
+            raw_score = sum(w for tok, w in token_weights.items() if tok in doc_tokens)
+            if raw_score <= 0:
                 continue
+            score = raw_score / max_possible
             results.append(
                 RetrievedDocument(
                     source_id=self._source_id(record),
                     source_type="vector",
-                    content=content,
+                    content=normalize_text(str(record.get("content", ""))),
                     score=score,
                 )
             )

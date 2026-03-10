@@ -248,6 +248,76 @@
       font-size:.78rem; color:#334155; margin:3px; }
     .doc-pill .doc-size { color:var(--muted); }
 
+    /* ─── Dataset panel ──────────────────────────────────────────────────── */
+    .dataset-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(210px,1fr));
+      gap:12px; margin:14px 0; }
+    .dataset-card { border:1.5px solid var(--border); border-radius:var(--radius-sm);
+      padding:14px; cursor:pointer; transition:border-color .18s,background .18s;
+      background:var(--surface); }
+    .dataset-card:hover { border-color:var(--indigo); background:var(--indigo-lt); }
+    .dataset-card.selected { border-color:var(--indigo); background:var(--indigo-lt); }
+    .dataset-card-name { font-weight:700; font-size:.9rem; margin-bottom:6px; color:var(--text); }
+    .dataset-card-type { font-size:.7rem; padding:2px 8px; border-radius:99px; display:inline-block;
+      margin-bottom:8px; font-weight:600; }
+    .dataset-card-type.multi_hop { background:#fae8ff; color:#7e22ce; }
+    .dataset-card-type.single_hop { background:#dbeafe; color:#1d4ed8; }
+    .dataset-card-desc { font-size:.78rem; color:var(--muted); line-height:1.4; margin-bottom:8px; }
+    .dataset-card-example { font-size:.72rem; font-style:italic; color:#64748b;
+      border-left:2px solid var(--border); padding-left:8px; }
+    .dataset-controls { border-top:1px solid var(--border); padding-top:14px; margin-top:6px; }
+    .dataset-controls-row { display:flex; gap:16px; align-items:flex-end; flex-wrap:wrap; }
+    .dataset-ctrl-group { display:flex; flex-direction:column; gap:4px; }
+    .dataset-ctrl-group label { font-size:.8rem; font-weight:600; color:var(--muted); }
+    .dataset-ctrl-group select { border:1.5px solid var(--border); border-radius:var(--radius-sm);
+      padding:7px 10px; font-family:inherit; font-size:.875rem; background:var(--surface); cursor:pointer; }
+    .dataset-ctrl-group input[type=range] { width:160px; accent-color:var(--indigo); cursor:pointer; }
+    .dataset-status { font-size:.85rem; margin-top:12px; padding:8px 12px;
+      border-radius:var(--radius-sm); }
+    .dataset-status.ok  { background:var(--green-bg); color:var(--green); }
+    .dataset-status.err { background:var(--red-bg); color:var(--red); }
+    .sample-qs-wrap { margin-top:16px; border-top:1px solid var(--border); padding-top:14px; }
+    .sample-qs-wrap h4 { font-size:.75rem; text-transform:uppercase; letter-spacing:.06em;
+      color:var(--muted); margin-bottom:10px; }
+    .sample-q-item { display:flex; gap:10px; padding:9px 0;
+      border-bottom:1px solid var(--border); align-items:flex-start; }
+    .sample-q-item:last-child { border-bottom:none; }
+    .sample-q-body { flex:1; min-width:0; }
+    .sample-q-text { font-size:.875rem; color:var(--text); line-height:1.4; margin-bottom:3px; }
+    .sample-q-answer { font-size:.75rem; color:var(--green); }
+    .sample-q-try { font-size:.75rem; padding:5px 12px; border:1.5px solid var(--indigo);
+      color:var(--indigo); background:none; border-radius:var(--radius-sm); cursor:pointer;
+      white-space:nowrap; font-family:inherit; font-weight:600; flex-shrink:0; }
+    .sample-q-try:hover { background:var(--indigo); color:#fff; }
+    .bench-search { width:100%; border:1.5px solid var(--border); border-radius:var(--radius-sm);
+      padding:9px 12px; font-size:.875rem; font-family:inherit; margin-bottom:12px;
+      transition:border-color .2s; }
+    .bench-search:focus { outline:none; border-color:var(--indigo); }
+    .bench-group-header { display:flex; align-items:center; gap:8px; margin:14px 0 8px;
+      font-size:.78rem; font-weight:700; text-transform:uppercase; letter-spacing:.06em;
+      color:var(--muted); }
+    .bench-source-pill { font-size:.7rem; padding:2px 8px; border-radius:99px;
+      background:#e0e7ff; color:#4338ca; font-weight:600; text-transform:none;
+      letter-spacing:0; }
+    .bench-count { color:var(--muted); font-weight:400; text-transform:none; letter-spacing:0; }
+    .difficulty-badge { font-size:.68rem; font-weight:700; padding:2px 8px;
+      border-radius:99px; text-transform:uppercase; letter-spacing:.05em; display:inline-block; }
+    .difficulty-badge.easy   { background:#f0fdf4; color:#15803d; border:1px solid #86efac; }
+    .difficulty-badge.medium { background:#fef3c7; color:#92400e; border:1px solid #fcd34d; }
+    .difficulty-badge.hard   { background:#fee2e2; color:#991b1b; border:1px solid #fca5a5; }
+    .dataset-card-note { font-size:.7rem; color:#64748b; margin-top:6px;
+      border-left:2px solid var(--border); padding-left:7px; font-style:italic; }
+    .qtype-tag { font-size:.68rem; padding:1px 6px; border-radius:4px;
+      background:#e0e7ff; color:#4338ca; font-weight:600; margin-left:6px;
+      vertical-align:middle; display:inline-block; }
+    .qtype-tag.bridge     { background:#fae8ff; color:#7e22ce; }
+    .qtype-tag.comparison { background:#dbeafe; color:#1d4ed8; }
+    .diff-explainer { background:#fafafa; border:1.5px dashed #c7d2fe;
+      border-radius:var(--radius-sm); padding:14px 16px; font-size:.82rem;
+      color:#374151; line-height:1.65; margin-bottom:18px; }
+    .diff-explainer strong { color:var(--indigo); }
+    .diff-explainer code { background:#e0e7ff; color:#4338ca; padding:1px 5px;
+      border-radius:4px; font-size:.78rem; }
+
     /* ─── Compare toggle ─────────────────────────────────────────────────── */
     .compare-toggle { display:flex; align-items:center; gap:6px; font-size:.85rem;
       color:var(--muted); cursor:pointer; user-select:none; }
@@ -331,6 +401,57 @@
     </div>
   </details>
 
+  <!-- Benchmark Datasets panel -->
+  <details class="upload-panel" id="dataset-panel" style="margin-bottom:12px">
+    <summary>📊 Benchmark Datasets <span id="dataset-loaded-badge" style="font-weight:400;color:var(--muted);font-size:.8rem;"></span></summary>
+    <div class="upload-body">
+      <p style="font-size:.85rem;color:var(--muted);margin:8px 0 4px">
+        Load a standard QA benchmark from Hugging Face to populate both the
+        <strong>vector index</strong> (unstructured passages) and the <strong>graph index</strong> (structured facts).
+        Requires <code>pip install datasets</code>.
+      </p>
+
+      <div class="dataset-grid" id="dataset-grid">
+        <span style="font-size:.8rem;color:var(--muted)">Loading…</span>
+      </div>
+
+      <!-- Controls — shown after a dataset card is selected -->
+      <div class="dataset-controls" id="dataset-controls" style="display:none">
+        <div class="dataset-controls-row">
+          <div class="dataset-ctrl-group">
+            <label for="dataset-split">Split</label>
+            <select id="dataset-split"></select>
+          </div>
+          <div class="dataset-ctrl-group">
+            <label for="dataset-rows">Rows: <span id="rows-display">300</span></label>
+            <input type="range" id="dataset-rows" min="50" max="1000" step="50" value="300"
+              oninput="document.getElementById('rows-display').textContent=this.value" />
+          </div>
+          <div class="dataset-ctrl-group" style="justify-content:flex-end">
+            <button class="btn-run" id="load-dataset-btn" onclick="loadDataset()">
+              Load &amp; Ingest ▶
+            </button>
+          </div>
+        </div>
+        <div id="dataset-status"></div>
+      </div>
+
+      <!-- Sample questions — shown after a successful load -->
+      <div class="sample-qs-wrap" id="sample-qs-wrap" style="display:none">
+        <h4>Sample questions — click to try</h4>
+        <div id="sample-qs-list"></div>
+      </div>
+
+      <!-- Persistent Q&A browser — loads saved benchmark files on page open -->
+      <div class="sample-qs-wrap" id="bench-browser" style="display:none">
+        <h4 style="margin-bottom:10px">📋 Saved Q&amp;A — browse &amp; test</h4>
+        <input type="text" class="bench-search" id="bench-search"
+          placeholder="Filter questions…" oninput="filterBenchQA()" />
+        <div id="bench-qa-list"></div>
+      </div>
+    </div>
+  </details>
+
   <!-- Query input -->
   <div class="query-card">
     <label for="query-input">Your question</label>
@@ -396,6 +517,18 @@
       <div class="compare-banner">
         ℹ️ <strong>Traditional RAG</strong> retrieves top-k docs and generates a direct answer — no decomposition, no retry loop.
         <strong>TreeQA</strong> decomposes the query, validates each sub-answer, and synthesises a grounded response.
+      </div>
+      <div class="diff-explainer">
+        <strong>Why do the answers sometimes look identical?</strong>
+        On <em>single-hop</em> or easy questions both methods retrieve the same docs and a capable LLM
+        chains them inside one prompt, so the surface answer looks the same.<br><br>
+        The difference shows up on <strong>bridge questions</strong> — questions where the retrieval
+        key for the <em>second</em> hop is hidden inside the answer of the <em>first</em> hop.<br>
+        Example: <code>"Where was the director of Inception born?"</code> — Normal RAG searches for
+        "director of Inception birth place" and misses; TreeQA first asks <code>"Who directed Inception?"</code>
+        → <em>Christopher Nolan</em>, then asks <code>"Where was Christopher Nolan born?"</code>.<br><br>
+        Load <strong>2WikiMultiHopQA</strong> or <strong>MuSiQue</strong> (marked 🔥 Hard) and try
+        bridge-type questions from the Q&amp;A browser to see the gap clearly.
       </div>
       <div class="compare-grid">
         <div class="compare-col traditional-col" id="col-traditional"></div>
@@ -982,8 +1115,217 @@
       .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
 
+  /* ── benchmark dataset panel ────────────────────────────────────────── */
+  let _selectedDatasetKey = null;
+  let _datasetsConfig = {};
+  const _sampleQStore = [];  // questions indexed by position (avoids inline onclick injection)
+
+  async function loadDatasets() {
+    const res = await fetch('/api/datasets').catch(() => null);
+    if (!res || !res.ok) return;
+    const data = await res.json();
+    _datasetsConfig = data.datasets || {};
+    _renderDatasetCards();
+  }
+
+  function _renderDatasetCards() {
+    const grid = document.getElementById('dataset-grid');
+    if (!grid) return;
+    grid.innerHTML = '';
+    for (const [key, cfg] of Object.entries(_datasetsConfig)) {
+      const card = el('div', { className: 'dataset-card' });
+      card.dataset.key = key;
+      card.onclick = () => selectDataset(key);
+      const typeLabel = cfg.type === 'multi_hop' ? '🔀 multi-hop' : '➡ single-hop';
+      card.innerHTML = `
+        <div class="dataset-card-name">${esc(cfg.name)}</div>
+        <span class="dataset-card-type ${esc(cfg.type)}">${esc(typeLabel)}</span>
+        <div class="dataset-card-desc">${esc(cfg.description)}</div>
+        <div class="dataset-card-example">"${esc(cfg.example_question)}"</div>
+      `;
+      grid.appendChild(card);
+    }
+  }
+
+  function selectDataset(key) {
+    _selectedDatasetKey = key;
+    document.querySelectorAll('.dataset-card').forEach(c =>
+      c.classList.toggle('selected', c.dataset.key === key)
+    );
+    const cfg = _datasetsConfig[key] || {};
+    const controls = document.getElementById('dataset-controls');
+    if (controls) controls.style.display = '';
+
+    const splitSel = document.getElementById('dataset-split');
+    if (splitSel) {
+      splitSel.innerHTML = (cfg.splits || ['train', 'validation'])
+        .map(s => `<option value="${esc(s)}">${esc(s)}</option>`).join('');
+    }
+    const rowsInput = document.getElementById('dataset-rows');
+    const rowsDisp  = document.getElementById('rows-display');
+    if (rowsInput) { rowsInput.value = cfg.default_max_rows || 300; }
+    if (rowsDisp)  { rowsDisp.textContent = cfg.default_max_rows || 300; }
+
+    const statusEl = document.getElementById('dataset-status');
+    if (statusEl) { statusEl.innerHTML = ''; statusEl.className = 'dataset-status'; }
+    const wrap = document.getElementById('sample-qs-wrap');
+    if (wrap) wrap.style.display = 'none';
+  }
+
+  async function loadDataset() {
+    if (!_selectedDatasetKey) return;
+    const split   = document.getElementById('dataset-split').value;
+    const maxRows = parseInt(document.getElementById('dataset-rows').value, 10);
+    const statusEl = document.getElementById('dataset-status');
+    const loadBtn  = document.getElementById('load-dataset-btn');
+
+    statusEl.className = 'dataset-status';
+    statusEl.innerHTML = '<span style="color:var(--muted)">⏳ Downloading from Hugging Face &amp; ingesting… (this can take a minute)</span>';
+    loadBtn.disabled = true;
+
+    try {
+      const res = await fetch('/api/load_dataset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dataset_key: _selectedDatasetKey, split, max_rows: maxRows }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        statusEl.className = 'dataset-status err';
+        statusEl.innerHTML = `⚠ ${esc(data.detail || 'Error loading dataset')}`;
+        return;
+      }
+      statusEl.className = 'dataset-status ok';
+      statusEl.innerHTML =
+        `✓ Loaded <strong>${data.rows_processed}</strong> ${esc(data.dataset_name)} rows → ` +
+        `<strong>${data.docs_written}</strong> documents indexed ` +
+        `(<strong>${data.vector_chunks}</strong> vector chunks + ` +
+        `<strong>${data.graph_facts}</strong> graph facts).`;
+
+      const badge = document.getElementById('dataset-loaded-badge');
+      if (badge) badge.textContent = `(${esc(data.dataset_name)} · ${esc(split)})`;
+
+      loadDocuments();  // refresh the Documents panel pill list
+
+      if (data.sample_questions && data.sample_questions.length) {
+        _renderSampleQuestions(data.sample_questions);
+      }
+    } catch (e) {
+      statusEl.className = 'dataset-status err';
+      statusEl.innerHTML = `⚠ Network error: ${esc(e.message)}`;
+    } finally {
+      loadBtn.disabled = false;
+    }
+  }
+
+  function _renderSampleQuestions(questions) {
+    const wrap = document.getElementById('sample-qs-wrap');
+    const list = document.getElementById('sample-qs-list');
+    if (!wrap || !list) return;
+    list.innerHTML = '';
+    questions.slice(0, 10).forEach(qa => {
+      const idx = _sampleQStore.length;
+      _sampleQStore.push(qa.question);
+      const item = el('div', { className: 'sample-q-item' });
+      const body = el('div', { className: 'sample-q-body' });
+      body.innerHTML = `
+        <div class="sample-q-text">${esc(qa.question)}</div>
+        ${qa.answer ? `<div class="sample-q-answer">✓ ${esc(qa.answer)}</div>` : ''}
+      `;
+      const btn = el('button', { className: 'sample-q-try' });
+      btn.textContent = 'Try ▶';
+      btn.onclick = () => tryQuestion(idx);
+      item.appendChild(body);
+      item.appendChild(btn);
+      list.appendChild(item);
+    });
+    wrap.style.display = '';
+    // Also refresh the persistent browser so new questions appear immediately
+    loadBenchmarkQA();
+  }
+
+  function tryQuestion(idx) {
+    const q = _sampleQStore[idx];
+    if (!q) return;
+    document.getElementById('query-input').value = q;
+    // Close dataset panel, scroll to query
+    document.getElementById('dataset-panel').removeAttribute('open');
+    document.getElementById('upload-panel').removeAttribute('open');
+    document.getElementById('query-input').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  /* ── benchmark Q&A browser (persistent across reloads) ─────────────── */
+  let _benchGroups = [];  // [{file, pairs:[{question,answer}]}]
+
+  async function loadBenchmarkQA() {
+    const res = await fetch('/api/benchmark').catch(() => null);
+    if (!res || !res.ok) return;
+    const data = await res.json();
+    _benchGroups = data.groups || [];
+    if (_benchGroups.length) {
+      _renderBenchQA(_benchGroups);
+      document.getElementById('bench-browser').style.display = '';
+      const badge = document.getElementById('dataset-loaded-badge');
+      if (badge && !badge.textContent) {
+        const names = _benchGroups.map(g => g.file.replace(/_train_sample|_validation_sample/, '')).join(', ');
+        badge.textContent = `(${names})`;
+      }
+    }
+  }
+
+  function _renderBenchQA(groups) {
+    const container = document.getElementById('bench-qa-list');
+    if (!container) return;
+    container.innerHTML = '';
+    for (const group of groups) {
+      // header line
+      const hdr = el('div', { className: 'bench-group-header' });
+      // prettify file stem: "hotpot_qa_train_sample" → "HotpotQA · train"
+      const pretty = group.file
+        .replace(/_sample$/, '')
+        .replace(/_train$/, ' · train')
+        .replace(/_validation$/, ' · validation')
+        .replace(/_test$/, ' · test');
+      hdr.innerHTML = `
+        <span class="bench-source-pill">${esc(pretty)}</span>
+        <span class="bench-count">${group.pairs.length} Q&amp;A pairs</span>
+      `;
+      container.appendChild(hdr);
+
+      for (const qa of group.pairs) {
+        const idx = _sampleQStore.length;
+        _sampleQStore.push(qa.question);
+        const item = el('div', { className: 'sample-q-item', dataset: { q: qa.question.toLowerCase() } });
+        item.dataset.q = qa.question.toLowerCase();
+        const body = el('div', { className: 'sample-q-body' });
+        const qtypeHtml = qa.question_type
+          ? `<span class="qtype-tag ${esc(qa.question_type)}">${esc(qa.question_type)}</span>` : '';
+        body.innerHTML = `
+          <div class="sample-q-text">${esc(qa.question)}${qtypeHtml}</div>
+          ${qa.answer ? `<div class="sample-q-answer">\u2713 ${esc(qa.answer)}</div>` : ''}
+        `;
+        const btn = el('button', { className: 'sample-q-try' });
+        btn.textContent = 'Try \u25b6';
+        btn.onclick = () => tryQuestion(idx);
+        item.appendChild(body);
+        item.appendChild(btn);
+        container.appendChild(item);
+      }
+    }
+  }
+
+  function filterBenchQA() {
+    const q = (document.getElementById('bench-search').value || '').toLowerCase().trim();
+    document.querySelectorAll('#bench-qa-list .sample-q-item').forEach(item => {
+      const text = (item.dataset.q || '');
+      item.style.display = (!q || text.includes(q)) ? '' : 'none';
+    });
+  }
+
   /* ── init ───────────────────────────────────────────────────────────── */
   loadDocuments();
+  loadDatasets();
+  loadBenchmarkQA();
 </script>
 </body>
 </html>

@@ -28,7 +28,7 @@ load_dotenv()
 @dataclass(slots=True)
 class TreeQASettings:
     max_retries: int = 2
-    retrieval_top_k: int = 3
+    retrieval_top_k: int = 6
     data_dir: str = "data"
     llm_provider: str = "stub"
     llm_model: str = ""
@@ -79,7 +79,7 @@ class TreeQASettings:
     def from_env(cls) -> "TreeQASettings":
         return cls(
             max_retries=int(os.getenv("TREEQA_MAX_RETRIES", "2")),
-            retrieval_top_k=int(os.getenv("TREEQA_RETRIEVAL_TOP_K", "3")),
+            retrieval_top_k=int(os.getenv("TREEQA_RETRIEVAL_TOP_K", "6")),
             data_dir=os.getenv("TREEQA_DATA_DIR", "data"),
             llm_provider=os.getenv("TREEQA_LLM_PROVIDER", "stub"),
             llm_model=os.getenv("TREEQA_LLM_MODEL", ""),

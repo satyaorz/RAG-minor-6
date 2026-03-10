@@ -13,27 +13,37 @@ class AnswerGenerator:
     def __init__(self, llm_client: LLMClient | None = None) -> None:
         self.llm_client = llm_client
 
-    def generate_for_node(self, question: str, documents: list[RetrievedDocument]) -> str:
+    def generate_for_node(
+        self,
+        question: str,
+        documents: list[RetrievedDocument],
+        prior_hops: list[tuple[str, str]] | None = None,
+    ) -> str:
         if not documents:
             return f"Insufficient evidence to answer: {question}"
-        selected_documents = documents[:3]
+        selected_documents = documents[:6]
         if self.llm_client is not None:
             try:
                 context = self._format_context(question, selected_documents)
+                hop_block = ""
+                if prior_hops:
+                    lines = "\n".join(f"  Q: {q}\n  A: {a}" for q, a in prior_hops)
+                    hop_block = f"\n\nPrevious reasoning steps (use these to resolve pronouns/entities):\n{lines}"
                 answer = self.llm_client.generate_text(
                     system_prompt=(
                         "You are a grounded question-answering assistant. "
-                        "Answer ONLY using facts explicitly stated in the supplied evidence. "
+                        "Answer ONLY using facts explicitly stated in the supplied evidence "
+                        "and the previous reasoning steps (if any). "
                         "Write 2 to 3 sentences in plain prose. "
-                        "Do NOT introduce information absent from the evidence. "
+                        "Do NOT introduce information absent from the evidence or prior steps. "
                         "Do NOT repeat headings or source labels inside the answer body. "
                         "Keep the answer concise and factual. "
                         "End with a 'Sources:' line listing the source ids of the evidence you used."
                     ),
                     user_prompt=(
-                        f"Question: {question}\n\n"
+                        f"Question: {question}{hop_block}\n\n"
                         f"Evidence:\n{context}\n\n"
-                        "Answer the question using only the evidence above."
+                        "Answer the question using only the evidence and prior steps above."
                     ),
                 )
                 if answer:

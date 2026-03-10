@@ -27,6 +27,9 @@ providers = [
   "qdrant-client>=1.9,<2",
   "sentence-transformers>=2.7,<4",
 ]
+datasets = [
+  "datasets>=2.0",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

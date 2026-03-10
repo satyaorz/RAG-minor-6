@@ -5,12 +5,15 @@ Start:
     uvicorn treeqa.api.app:app --reload --port 8000
 
 Endpoints:
-    GET  /              → SPA (index.html)
-    GET  /api/health    → {"status": "ok"}
-    GET  /api/documents → list files in data/documents/
-    POST /api/upload    → upload + ingest a .txt/.md file
-    POST /api/run       → run TreeQA pipeline, return PipelineResult
-    POST /api/compare   → run traditional RAG + TreeQA in parallel
+    GET  /                  → SPA (index.html)
+    GET  /api/health        → {"status": "ok"}
+    GET  /api/documents     → list files in data/documents/
+    GET  /api/datasets      → list supported benchmark datasets
+    POST /api/upload        → upload + ingest a .txt/.md file
+    POST /api/run           → run TreeQA pipeline, return PipelineResult
+    POST /api/run_rag       → run Normal RAG (single-hop), return result
+    POST /api/compare       → run traditional RAG + TreeQA in parallel
+    POST /api/load_dataset  → stream a HF benchmark dataset and re-index
 """
 
 from __future__ import annotations
@@ -26,6 +29,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, field_validator
 
 from treeqa.config import TreeQASettings
+from treeqa.dataset_loader import SUPPORTED_DATASETS, load_and_write_corpus
 from treeqa.ingest import build_local_indices
 from treeqa.pipeline import TreeQAPipeline
 
@@ -74,6 +78,31 @@ class RunRequest(BaseModel):
         if not cleaned:
             raise ValueError("query must not be empty")
         return cleaned
+
+
+class LoadDatasetRequest(BaseModel):
+    dataset_key: str
+    split: str = "train"
+    max_rows: int = 300
+
+    @field_validator("dataset_key")
+    @classmethod
+    def key_must_be_known(cls, v: str) -> str:
+        if v not in SUPPORTED_DATASETS:
+            raise ValueError(f"Unknown dataset key '{v}'")
+        return v
+
+    @field_validator("split")
+    @classmethod
+    def split_must_be_valid(cls, v: str) -> str:
+        if v not in {"train", "validation", "test"}:
+            raise ValueError(f"Invalid split '{v}'")
+        return v
+
+    @field_validator("max_rows")
+    @classmethod
+    def rows_must_be_positive(cls, v: int) -> int:
+        return max(10, min(v, 2000))
 
 
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
@@ -203,3 +232,95 @@ async def compare_query(body: RunRequest) -> JSONResponse:
         raise HTTPException(status_code=504, detail="TreeQA pipeline timed out. Try a simpler query.")
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.get("/api/benchmark")
+def list_benchmark_qa() -> JSONResponse:
+    """Return all saved benchmark Q&A pairs from data/benchmark/*.jsonl, grouped by file."""
+    bench_dir = _settings.resolved_data_dir / "benchmark"
+    groups: list[dict] = []
+    if bench_dir.exists():
+        import json as _json
+        for path in sorted(bench_dir.glob("*.jsonl")):
+            pairs: list[dict] = []
+            for line in path.read_text(encoding="utf-8").splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    obj = _json.loads(line)
+                    if isinstance(obj, dict) and obj.get("question"):
+                        pairs.append({
+                            "question": str(obj.get("question", "")),
+                            "answer":   str(obj.get("answer", "")),
+                        })
+                except Exception:
+                    pass
+            if pairs:
+                groups.append({"file": path.stem, "pairs": pairs})
+    return JSONResponse(content={"groups": groups})
+
+
+@app.get("/api/datasets")
+def list_datasets() -> JSONResponse:
+    """Return metadata for all supported benchmark datasets."""
+    return JSONResponse(content={"datasets": SUPPORTED_DATASETS})
+
+
+def _load_dataset_sync(dataset_key: str, split: str, max_rows: int) -> dict:
+    """Blocking: download corpus from HF, write markdown files, re-index, reload pipeline."""
+    result = load_and_write_corpus(
+        dataset_key=dataset_key,
+        split=split,
+        max_rows=max_rows,
+        data_dir=_settings.resolved_data_dir,
+    )
+    report = build_local_indices(_settings)
+    _reload_pipeline()
+    return {
+        "ok": True,
+        "dataset_key": result.dataset_key,
+        "dataset_name": result.dataset_name,
+        "split": result.split,
+        "rows_processed": result.rows_processed,
+        "docs_written": result.docs_written,
+        "vector_chunks": report.vector_chunks,
+        "graph_facts": report.graph_facts,
+        "sample_questions": result.sample_questions,
+        "message": (
+            f"Loaded {result.rows_processed} {result.dataset_name} rows \u2192 "
+            f"{result.docs_written} documents "
+            f"({report.vector_chunks} vector chunks + {report.graph_facts} graph facts) indexed."
+        ),
+    }
+
+
+@app.post("/api/load_dataset")
+async def load_dataset_endpoint(body: LoadDatasetRequest) -> JSONResponse:
+    """Stream a HuggingFace benchmark dataset, extract corpus, re-index, reload pipeline.
+
+    Requires the ``datasets`` package (``pip install datasets``).
+    """
+    loop = asyncio.get_event_loop()
+    try:
+        result = await asyncio.wait_for(
+            loop.run_in_executor(
+                _executor,
+                _load_dataset_sync,
+                body.dataset_key,
+                body.split,
+                body.max_rows,
+            ),
+            timeout=300.0,  # 5 min cap for large dataset downloads
+        )
+        return JSONResponse(content=result)
+    except asyncio.TimeoutError:
+        raise HTTPException(
+            status_code=504,
+            detail="Dataset loading timed out (5 min). Try fewer rows.",
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+

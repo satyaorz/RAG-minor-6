@@ -8,3 +8,8 @@ build/
 *.pyc
 .env
 
+# Dataset corpus & generated indices (large, not tracked in git)
+data/documents/datasets/
+data/index/
+data/benchmark/
+
