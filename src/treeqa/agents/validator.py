@@ -93,35 +93,42 @@ class AnswerValidator:
         try:
             payload = self.llm_client.generate_json(
                 system_prompt=(
-                    "You are a strict factuality judge. "
-                    "Evaluate whether the answer is directly supported by the supplied evidence. "
-                    "Consider the Source Consensus Coefficient (SCC) provided; lower SCC means sources disagree. "
-                    "Return ONLY a JSON object with exactly three keys: "
-                    "\"passed\" (boolean), \"confidence\" (number), \"rationale\" (string)."
+                    "You are a high-precision Factuality & Category Judge. "
+                    "Evaluate two things:\n"
+                    "1. Grounding: Is the answer supported by the evidence?\n"
+                    "2. Category Alignment: Does the answer provide the SPECIFIC TYPE of information "
+                    "requested (e.g., if asked for a Country, is the answer a Country and not just a City/Region)?\n\n"
+                    "Return ONLY a JSON object: "
+                    "{\"passed\": bool, \"confidence\": float, \"rationale\": string, \"category_match\": bool}."
                 ),
                 user_prompt=(
                     f"Answer: {answer}\n"
                     f"Evidence: {self._format_context(documents)}\n"
                     f"Source Consensus Coefficient: {consensus_score}\n\n"
-                    "Is the answer fully supported?"
+                    "Does the answer match the evidence AND the requested entity category?"
                 ),
             )
+            if not isinstance(payload, dict):
+                return None
+                
+            category_match = bool(payload.get("category_match", True))
+            passed = bool(payload.get("passed", False)) and category_match
+            
+            raw_confidence = payload.get("confidence", 0.0)
+            confidence = float(raw_confidence) if isinstance(raw_confidence, (int, float)) else 0.0
+            if not category_match:
+                confidence = min(confidence, 0.4)
+                
+            rationale = str(payload.get("rationale", "")).strip()
+            if not category_match:
+                rationale = f"Category Mismatch: {rationale}"
+                
+            return ValidationResult(passed=passed, confidence=confidence, rationale=rationale)
         except Exception:
             return None
-        if not isinstance(payload, dict):
-            return None
-        passed = bool(payload.get("passed", False))
-        raw_confidence = payload.get("confidence", 0.0)
-        confidence = float(raw_confidence) if isinstance(raw_confidence, (int, float)) else 0.0
-        confidence = max(0.0, min(1.0, confidence))
-        rationale = str(payload.get("rationale", "")).strip()
-        if not rationale:
-            rationale = "LLM judge returned no rationale."
-        return ValidationResult(passed=passed, confidence=confidence, rationale=rationale)
 
     def _format_context(self, documents: list[RetrievedDocument]) -> str:
         return "\n".join(
             f"[{document.source_type}:{document.source_id}] {document.content}"
             for document in documents
         )
-

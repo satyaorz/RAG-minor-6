@@ -13,8 +13,10 @@ ART-R introduces a cross-backend auditing mechanism. By comparing unstructured d
 - **SCC ≈ 1.0:** High agreement between semantic and factual sources.
 - **SCC < 0.5:** High conflict; triggers a specialized **Conflict Auditor** loop to resolve the contradiction before generation.
 
-### C. Hallucination Mitigation via Granularity
-By forcing the system to decompose broad, unanswerable claims into granular atomic facts, the surface area for hallucination is significantly reduced. Each leaf node in the ART-R tree must pass a strict "LLM-as-a-judge" groundedness check before propagating its answer upward.
+### C. Category-Aware Validation (CAV)
+Traditional validators only check if an answer is "grounded" in context. ART-R introduces **CAV**, which extracts the intended **Entity Category** from the user's query (e.g., Country, Date, Currency). 
+- If a user asks for a **Country** but the evidence only supports a **Region** (e.g., "Bohemia" instead of "Czech Republic"), CAV lowers the confidence and fails the node.
+- This failure triggers a **Recursive Hop**, forcing the system to search for the modern mapping or containment relationship, solving the "Hidden Hop" problem where the answer is technically grounded but contextually incomplete.
 
 ## 3. Architecture Overview
 - **Decomposer:** Builds the initial logic tree.
