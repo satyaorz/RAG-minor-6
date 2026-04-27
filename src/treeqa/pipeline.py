@@ -199,15 +199,15 @@ class TreeQAPipeline:
             )
             node.validation = self.validator.validate(node.answer, node.documents)
             
-            # Update source consensus for tracking
-            if node.documents:
-                source_types = {doc.source_type for doc in node.documents}
-                if len(source_types) > 1:
-                    node.source_consensus = getattr(self.validator, "_calculate_consensus", lambda x: 1.0)(node.documents)
-
             if node.validation.passed:
                 node.status = "verified"
                 break
+            
+            # Optimization: If category mismatch is the reason for failure, 
+            # don't bother retrying the same question - jump to restructuring.
+            if "[Category Mismatch]" in node.validation.rationale:
+                break
+                
             retrieval_question = self.corrector.refine(retrieval_question, node.attempts)
 
         # ART-R Restructuring Loop

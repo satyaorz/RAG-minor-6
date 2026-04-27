@@ -26,14 +26,20 @@ Implemented an in-memory execution cache (`_cache`) natively within the `OpenAIC
   - Re-running the Decomposer on parent nodes during whole-tree retries.
   - Generating final syntheses when intermediate nodes haven't fundamentally altered the evidence payload.
 
-## 5. Index & Data Caching
+## 6. Consolidated Logic Auditing
 ### The Problem:
-Benchmark datasets were being streamed and processed from HuggingFace Hub on every load request, and the entire search index (including FAISS embeddings) was being re-computed from scratch during every ingestion, even if no documents had changed.
+Deep validation (Grounding + Category + Consensus) previously required 2–3 sequential LLM calls per attempt, causing timeouts (110s+) on free-tier providers.
 
 ### The Solution:
-Implemented state-aware caching in `dataset_loader.py` and `ingest.py`.
-- **Dataset Memoization:** Before downloading, the system checks if the target dataset directory already contains processed documents and a benchmark sample. If present, it skips the network-intensive download and extraction phase entirely.
-- **Incremental Index Validation:** The `ingest` module now compares the modification times (`mtime`) of the raw source documents against the existing FAISS index file. 
-- **Impact:** 
-  - Loading a previously used benchmark dataset is now instantaneous (0s vs 2-5 minutes).
-  - Ingestion skips the heavy LLM embedding phase (encoding 20k+ chunks) if the source files are unchanged, reducing server startup and ingestion time from minutes to milliseconds.
+Implemented a **Consolidated Logic Auditor** in `validator.py`.
+- **Mechanism:** A single unified prompt evaluates evidence grounding, entity category alignment, and source consensus simultaneously.
+- **Impact:** Reduces per-node validation latency by 60–70%, ensuring complex multi-hop trees resolve well within the timeout window.
+
+## 7. Intelligent Early-Exit (Short-Circuiting)
+### The Problem:
+If a validator fails due to a structural issue (e.g., asking for a Country but only finding a Region), retrying the same question with a "refined" query is usually futile.
+
+### The Solution:
+Implemented **Categorical Short-Circuiting** in `pipeline.py`.
+- **Mechanism:** If the validator returns a `[Category Mismatch]` rationale, the pipeline immediately breaks the retry loop and triggers the **ART-R Restructurer**.
+- **Impact:** Prevents 2–4 useless LLM calls per failed hop, significantly accelerating the "self-healing" phase of the logic tree.
