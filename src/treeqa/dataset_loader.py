@@ -137,48 +137,35 @@ def load_and_write_corpus(
 ) -> DatasetLoadResult:
     """Stream `max_rows` rows from HuggingFace Hub, extract text corpus,
     write deduplicated markdown files, and return stats + sample Q&A pairs.
-
-    The `datasets` package must be installed::
-
-        pip install datasets
     """
-    try:
-        from datasets import load_dataset as hf_load  # type: ignore
-    except ImportError as exc:
-        raise RuntimeError(
-            "The 'datasets' package is required for benchmark loading. "
-            "Install with:  pip install datasets"
-        ) from exc
-
     cfg = SUPPORTED_DATASETS.get(dataset_key)
     if not cfg:
-        raise ValueError(
-            f"Unknown dataset '{dataset_key}'. "
-            f"Supported: {list(SUPPORTED_DATASETS)}"
-        )
+        raise ValueError(f"Unknown dataset '{dataset_key}'")
 
     max_rows = min(max(1, max_rows), MAX_ROWS_HARD_CAP)
-
-    load_kwargs: dict = {"split": split, "streaming": True, "trust_remote_code": False}
-    if cfg["hf_config"]:
-        ds = hf_load(cfg["hf_name"], cfg["hf_config"], **load_kwargs)
-    else:
-        ds = hf_load(cfg["hf_name"], **load_kwargs)
-
     out_dir = data_dir / "documents" / "datasets" / dataset_key
     bench_dir = data_dir / "benchmark"
     bench_path = bench_dir / f"{dataset_key}_{split}_sample.jsonl"
+    
+    # Track metadata to see how many rows we already have
+    meta_path = out_dir / ".metadata.json"
+    ingested_rows = 0
+    if meta_path.exists():
+        try:
+            meta = json.loads(meta_path.read_text(encoding="utf-8"))
+            ingested_rows = meta.get("rows_processed", 0)
+        except Exception:
+            pass
 
-    # Optimization: if docs already exist and benchmark sample exists, skip download
-    if out_dir.exists() and any(out_dir.iterdir()) and bench_path.exists():
-        # Count existing docs
-        existing_docs = sum(1 for _ in out_dir.iterdir() if _.is_file())
-        # Load sample questions from existing bench file
-        existing_samples = []
+    # If we already have enough rows, skip
+    if ingested_rows >= max_rows and bench_path.exists():
+        print(f"[dataset] Already have {ingested_rows} rows for {dataset_key}. Skipping download.")
+        existing_docs = sum(1 for _ in out_dir.iterdir() if _.is_file() and _.suffix == ".md")
+        sample_questions = []
         try:
             for line in bench_path.read_text(encoding="utf-8").splitlines():
                 if line.strip():
-                    existing_samples.append(json.loads(line))
+                    sample_questions.append(json.loads(line))
         except Exception:
             pass
             
@@ -186,26 +173,46 @@ def load_and_write_corpus(
             dataset_key=dataset_key,
             dataset_name=cfg["name"],
             split=split,
-            rows_processed=max_rows, # Assumed
+            rows_processed=ingested_rows,
             docs_written=existing_docs,
             output_dir=str(out_dir),
-            sample_questions=existing_samples
+            sample_questions=sample_questions
         )
 
-    out_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        from datasets import load_dataset as hf_load  # type: ignore
+    except ImportError as exc:
+        raise RuntimeError("Install 'datasets' package.") from exc
 
+    print(f"[dataset] Streaming {max_rows} rows from {cfg['hf_name']}...")
+    load_kwargs: dict = {"split": split, "streaming": True, "trust_remote_code": False}
+    if cfg["hf_config"]:
+        ds = hf_load(cfg["hf_name"], cfg["hf_config"], **load_kwargs)
+    else:
+        ds = hf_load(cfg["hf_name"], **load_kwargs)
+
+    out_dir.mkdir(parents=True, exist_ok=True)
     extractor = _EXTRACTORS[dataset_key]
-    doc_map: dict[str, list[str]] = {}   # title → unique paragraphs (insertion-ordered)
+    doc_map: dict[str, list[str]] = {}
     sample_questions: list[dict] = []
     rows_processed = 0
 
+    # If we are resuming, we still have to skip rows in the stream
+    # but at least we don't re-write the same files if we don't have to.
     for row in ds:
         if rows_processed >= max_rows:
             break
+        
+        # Increment first so we track correctly
+        rows_processed += 1
+        
+        # Skip extraction for already ingested rows to save CPU
+        if rows_processed <= ingested_rows and bench_path.exists():
+            continue
+
         try:
             extracted = extractor(row)
         except Exception:
-            rows_processed += 1
             continue
 
         for title, paragraphs in extracted["docs"]:
@@ -223,36 +230,39 @@ def load_and_write_corpus(
         if q and len(sample_questions) < 20:
             sample_questions.append({"question": q, "answer": a, "question_type": qtype})
 
-        rows_processed += 1
-
     # Write deduplicated markdown files
-    docs_written = 0
     for title, paragraphs in doc_map.items():
         if not paragraphs:
             continue
         safe = _safe_filename(title)
         path = out_dir / f"{safe}.md"
-        with path.open("w", encoding="utf-8") as fh:
-            fh.write(f"# {title}\n\n")
+        # Use append to avoid deleting existing content if we are adding rows
+        with path.open("a", encoding="utf-8") as fh: 
+            if path.stat().st_size == 0:
+                fh.write(f"# {title}\n\n")
             for p in paragraphs:
                 fh.write(p.rstrip() + "\n\n")
-        docs_written += 1
 
-    # Save sample benchmark Q&A pairs
+    # Update metadata
+    meta_path.write_text(json.dumps({"rows_processed": rows_processed}), encoding="utf-8")
+
+    # Save sample benchmark Q&A pairs (overwrite with latest samples)
     if sample_questions:
         bench_dir = data_dir / "benchmark"
         bench_dir.mkdir(parents=True, exist_ok=True)
-        bench_path = bench_dir / f"{dataset_key}_{split}_sample.jsonl"
         with bench_path.open("w", encoding="utf-8") as fh:
             for qa in sample_questions:
                 fh.write(json.dumps(qa, ensure_ascii=True) + "\n")
 
+    # Return total count
+    final_docs_written = sum(1 for _ in out_dir.iterdir() if _.is_file() and _.suffix == ".md")
+    
     return DatasetLoadResult(
         dataset_key=dataset_key,
         dataset_name=cfg["name"],
         split=split,
         rows_processed=rows_processed,
-        docs_written=docs_written,
+        docs_written=final_docs_written,
         output_dir=str(out_dir),
         sample_questions=sample_questions,
     )
