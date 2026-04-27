@@ -56,6 +56,36 @@ def build_local_indices(settings: TreeQASettings | None = None) -> IngestReport:
         else index_dir / "graph_facts.jsonl"
     )
 
+    faiss_path = vector_index_path.with_suffix(".faiss")
+    meta_path = vector_index_path.with_name("vector_meta.json")
+
+    # Optimization: Check if we even need to re-index documents
+    latest_doc_mtime = 0.0
+    if documents_dir.exists():
+        for p in documents_dir.rglob("*"):
+            if p.is_file():
+                latest_doc_mtime = max(latest_doc_mtime, p.stat().st_mtime)
+
+    if (
+        faiss_path.exists() 
+        and meta_path.exists() 
+        and faiss_path.stat().st_mtime > latest_doc_mtime
+    ):
+        print("[ingest] Indices are up to date. Skipping re-indexing.")
+        # Load counts for report
+        try:
+            v_count = len(json.loads(meta_path.read_text(encoding="utf-8")))
+            g_count = sum(1 for _ in graph_index_path.read_text(encoding="utf-8").splitlines() if _.strip())
+        except Exception:
+            v_count, g_count = 0, 0
+            
+        return IngestReport(
+            vector_chunks=v_count,
+            graph_facts=g_count,
+            vector_index_path=str(vector_index_path),
+            graph_index_path=str(graph_index_path),
+        )
+
     chunks = _build_document_chunks(documents_dir)
     facts = _build_graph_facts(graph_dir)
 

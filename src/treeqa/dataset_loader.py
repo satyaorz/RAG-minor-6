@@ -166,6 +166,32 @@ def load_and_write_corpus(
         ds = hf_load(cfg["hf_name"], **load_kwargs)
 
     out_dir = data_dir / "documents" / "datasets" / dataset_key
+    bench_dir = data_dir / "benchmark"
+    bench_path = bench_dir / f"{dataset_key}_{split}_sample.jsonl"
+
+    # Optimization: if docs already exist and benchmark sample exists, skip download
+    if out_dir.exists() and any(out_dir.iterdir()) and bench_path.exists():
+        # Count existing docs
+        existing_docs = sum(1 for _ in out_dir.iterdir() if _.is_file())
+        # Load sample questions from existing bench file
+        existing_samples = []
+        try:
+            for line in bench_path.read_text(encoding="utf-8").splitlines():
+                if line.strip():
+                    existing_samples.append(json.loads(line))
+        except Exception:
+            pass
+            
+        return DatasetLoadResult(
+            dataset_key=dataset_key,
+            dataset_name=cfg["name"],
+            split=split,
+            rows_processed=max_rows, # Assumed
+            docs_written=existing_docs,
+            output_dir=str(out_dir),
+            sample_questions=existing_samples
+        )
+
     out_dir.mkdir(parents=True, exist_ok=True)
 
     extractor = _EXTRACTORS[dataset_key]

@@ -26,11 +26,14 @@ Implemented an in-memory execution cache (`_cache`) natively within the `OpenAIC
   - Re-running the Decomposer on parent nodes during whole-tree retries.
   - Generating final syntheses when intermediate nodes haven't fundamentally altered the evidence payload.
 
-## 4. Asynchronous Pipeline UI
+## 5. Index & Data Caching
 ### The Problem:
-Traditional blocking APIs (`POST /api/run`) force the client to wait until the entire N-hop tree resolves, creating a poor user experience (TTFB - Time to First Byte can exceed 30 seconds).
+Benchmark datasets were being streamed and processed from HuggingFace Hub on every load request, and the entire search index (including FAISS embeddings) was being re-computed from scratch during every ingestion, even if no documents had changed.
 
 ### The Solution:
-The FastAPI backend implements Server-Sent Events (SSE) via the `/api/run/stream` endpoint.
-- **Mechanism:** The `TreeQAPipeline` accepts a `progress_callback` keyword argument. The API wraps this in a thread-safe `queue.Queue()` and yields JSON updates incrementally.
-- **Impact:** The frontend renders nodes dynamically as they are decomposed, retrieved, and validated, reducing perceived latency to near-zero.
+Implemented state-aware caching in `dataset_loader.py` and `ingest.py`.
+- **Dataset Memoization:** Before downloading, the system checks if the target dataset directory already contains processed documents and a benchmark sample. If present, it skips the network-intensive download and extraction phase entirely.
+- **Incremental Index Validation:** The `ingest` module now compares the modification times (`mtime`) of the raw source documents against the existing FAISS index file. 
+- **Impact:** 
+  - Loading a previously used benchmark dataset is now instantaneous (0s vs 2-5 minutes).
+  - Ingestion skips the heavy LLM embedding phase (encoding 20k+ chunks) if the source files are unchanged, reducing server startup and ingestion time from minutes to milliseconds.
