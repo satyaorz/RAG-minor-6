@@ -133,18 +133,53 @@ class TreeQAPipeline:
             prior_hops = []
         if verified_cache is None:
             verified_cache = {}
+            
         if node.children:
-            accumulated: list[tuple[str, str]] = list(prior_hops)
-            for child in node.children:
-                self._resolve_tree(
-                    child, 
-                    accumulated, 
-                    progress_callback=_cb, 
-                    verified_cache=verified_cache,
-                    restructure_depth=restructure_depth
-                )
-                if child.answer:
-                    accumulated.append((child.question, self._strip_sources(child.answer)))
+            import concurrent.futures
+            
+            # Parallelization is powerful but dangerous for multi-hop chaining.
+            # We ONLY parallelize if:
+            # 1. The question is a comparison ("which", "compare", "difference")
+            # 2. OR the decomposer explicitly tags nodes as independent (future-proof)
+            # Default to SEQUENTIAL for safety (fixes multi-hop dependencies).
+            
+            is_comparison = any(
+                k in node.question.lower() for k in ["which", "compare", "difference", "between"]
+            )
+            is_tagged_parallel = "[PARALLEL]" in node.question
+            
+            do_parallel = (is_comparison or is_tagged_parallel) and not any(
+                "[DEP:" in child.question for child in node.children
+            )
+            
+            if do_parallel:
+                # Independent siblings can run in parallel
+                with concurrent.futures.ThreadPoolExecutor(max_workers=len(node.children)) as executor:
+                    futures = {
+                        executor.submit(
+                            self._resolve_tree, 
+                            child, 
+                            prior_hops, 
+                            _cb, 
+                            verified_cache, 
+                            restructure_depth
+                        ): child for child in node.children
+                    }
+                    concurrent.futures.wait(futures)
+            else:
+                # Sequential resolution for dependent hops
+                accumulated: list[tuple[str, str]] = list(prior_hops)
+                for child in node.children:
+                    self._resolve_tree(
+                        child, 
+                        accumulated, 
+                        _cb, 
+                        verified_cache, 
+                        restructure_depth
+                    )
+                    if child.answer:
+                        accumulated.append((child.question, self._strip_sources(child.answer)))
+            
             node.answer = self.generator.generate_final(node.question, node.children)
             node.attempts = max((child.attempts for child in node.children), default=0)
             node.status = (
