@@ -23,11 +23,16 @@ class QueryNode:
     node_id: str
     question: str
     answer: str = ""
-    status: str = "pending"
+    status: str = "pending"  # pending, verified, needs_review, restructured
     attempts: int = 0
     documents: list[RetrievedDocument] = field(default_factory=list)
     validation: ValidationResult | None = None
     children: list["QueryNode"] = field(default_factory=list)
+    
+    # ART-R specific tracking
+    source_consensus: float = 1.0  # 1.0 = total agreement, 0.0 = total conflict
+    was_restructured: bool = False
+    original_question: str | None = None
 
     @property
     def is_leaf(self) -> bool:

@@ -90,6 +90,8 @@ class LocalVectorBackend:
             raise RuntimeError(
                 f"Local vector index not found at {self.index_path}. Run `python -m treeqa.cli ingest`."
             )
+        self._embedding_model_name = embedding_model
+        self._embeddings_cache_path = self.index_path.with_suffix(".embeddings.npy")
         self.documents = self._load_index()
         self._idf = self._build_idf()
         self._model, self._doc_embeddings = self._build_embeddings(embedding_model)
@@ -99,15 +101,31 @@ class LocalVectorBackend:
     # ------------------------------------------------------------------
 
     def _build_embeddings(self, model_name: str):
-        """Return (model, embeddings_array) or (None, None) on import error."""
+        """Return (model, embeddings_array) or (None, None) on import error.
+
+        Embeddings are cached to `<index>.embeddings.npy` so they are only
+        computed once. The cache is invalidated when the index file is newer.
+        """
         try:
             from sentence_transformers import SentenceTransformer  # type: ignore
+            import numpy as np
         except ImportError:
             return None, None
 
         model = SentenceTransformer(model_name)
+
+        cache = self._embeddings_cache_path
+        if (
+            cache.exists()
+            and cache.stat().st_mtime >= self.index_path.stat().st_mtime
+        ):
+            embeddings = np.load(str(cache))
+            if embeddings.shape[0] == len(self.documents):
+                return model, embeddings
+
         texts = [self._scoring_text(r) for r in self.documents]
         embeddings = model.encode(texts, convert_to_numpy=True, normalize_embeddings=True)
+        np.save(str(cache), embeddings)
         return model, embeddings
 
     def _build_idf(self) -> dict[str, float]:

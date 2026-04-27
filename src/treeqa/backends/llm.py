@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import json
 from json import JSONDecodeError
 from typing import Any, Protocol
@@ -26,8 +26,13 @@ class OpenAICompatibleLLMClient:
     timeout_seconds: int = 30
     temperature: float = 0.0
     extra_headers: dict[str, str] | None = None
+    _cache: dict[tuple[str, str], str] = field(default_factory=dict, init=False)
 
     def generate_text(self, system_prompt: str, user_prompt: str) -> str:
+        cache_key = (system_prompt, user_prompt)
+        if cache_key in self._cache:
+            return self._cache[cache_key]
+
         payload = {
             "model": self.model,
             "temperature": self.temperature,
@@ -44,7 +49,10 @@ class OpenAICompatibleLLMClient:
         content = message.get("content", "")
         if not isinstance(content, str):
             raise RuntimeError("LLM response content was not text.")
-        return content.strip()
+        
+        result = content.strip()
+        self._cache[cache_key] = result
+        return result
 
     def generate_json(self, system_prompt: str, user_prompt: str) -> dict[str, Any] | list[Any]:
         text = self.generate_text(system_prompt, user_prompt)

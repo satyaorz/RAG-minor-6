@@ -12,4 +12,6 @@ build/
 data/documents/datasets/
 data/index/
 data/benchmark/
+temp/
+src/*.egg-info/
 

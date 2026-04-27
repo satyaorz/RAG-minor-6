@@ -49,12 +49,19 @@ def _stub_corrector() -> MagicMock:
     return mock
 
 
+def _stub_restructurer(new_nodes: list[QueryNode] | None = None) -> MagicMock:
+    mock = MagicMock()
+    mock.restructure.return_value = new_nodes
+    return mock
+
+
 def _offline_settings() -> TreeQASettings:
     """Settings that do not trigger any network or file-system access."""
     return TreeQASettings(
         llm_provider="stub",
         vector_provider="memory",
         graph_provider="memory",
+        max_restructures=1,
     )
 
 
@@ -67,6 +74,7 @@ def _make_pipeline(**overrides) -> TreeQAPipeline:
         validator=overrides.get("validator", _stub_validator()),
         corrector=overrides.get("corrector", _stub_corrector()),
         generator=overrides.get("generator", _stub_generator()),
+        restructurer=overrides.get("restructurer", _stub_restructurer()),
     )
 
 
@@ -163,6 +171,42 @@ class TreeQAPipelineTest(unittest.TestCase):
         corrector.refine.assert_called_once()
         self.assertEqual(result.root.status, "verified")
         self.assertEqual(result.root.attempts, 2)
+
+    def test_pipeline_restructures_node_on_failure(self) -> None:
+        # Validator always fails
+        failing_validator = MagicMock()
+        failing_validator.validate.return_value = ValidationResult(
+            passed=False, confidence=0.1, rationale="Dead end."
+        )
+
+        # Restructurer provides new nodes
+        restructured_nodes = [
+            QueryNode(node_id="sub-1", question="Splinter A"),
+            QueryNode(node_id="sub-2", question="Splinter B"),
+        ]
+        restructurer = _stub_restructurer(new_nodes=restructured_nodes)
+
+        pipeline = _make_pipeline(
+            validator=failing_validator,
+            restructurer=restructurer,
+        )
+        
+        # We need to make the validator pass for the new sub-nodes 
+        # so the test terminates nicely.
+        failing_validator.validate.side_effect = [
+            ValidationResult(passed=False, confidence=0.1, rationale="Dead end."), # original leaf fail
+            ValidationResult(passed=False, confidence=0.1, rationale="Dead end."), # retry 1 fail
+            ValidationResult(passed=False, confidence=0.1, rationale="Dead end."), # retry 2 fail
+            ValidationResult(passed=True, confidence=1.0, rationale="Pass A"),      # sub-1 pass
+            ValidationResult(passed=True, confidence=1.0, rationale="Pass B"),      # sub-2 pass
+        ]
+
+        result = pipeline.run("Complex Question")
+
+        self.assertTrue(result.root.was_restructured)
+        self.assertEqual(len(result.root.children), 2)
+        restructurer.restructure.assert_called_once()
+        self.assertEqual(result.root.status, "verified")
 
 
 if __name__ == "__main__":

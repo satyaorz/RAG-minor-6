@@ -23,6 +23,12 @@ class AnswerValidator:
                 rationale="No evidence was retrieved for this node.",
             )
 
+        # Calculate Source Consensus Coefficient (SCC)
+        source_types = {doc.source_type for doc in documents}
+        consensus_score = 1.0
+        if len(source_types) > 1:
+            consensus_score = self._calculate_consensus(documents)
+
         if len(documents) < _MIN_EVIDENCE_COUNT:
             return ValidationResult(
                 passed=False,
@@ -34,7 +40,7 @@ class AnswerValidator:
             )
 
         if self.llm_client is not None:
-            llm_result = self._validate_with_llm(answer, documents)
+            llm_result = self._validate_with_llm(answer, documents, consensus_score)
             if llm_result is not None:
                 return llm_result
 
@@ -55,24 +61,49 @@ class AnswerValidator:
         )
         return ValidationResult(passed=passed, confidence=confidence, rationale=rationale)
 
+    def _calculate_consensus(self, documents: list[RetrievedDocument]) -> float:
+        """Determines if different source types (vector vs graph) contradict each other."""
+        if not self.llm_client:
+            return 1.0
+            
+        vector_docs = [d for d in documents if d.source_type == "vector"]
+        graph_docs = [d for d in documents if d.source_type == "graph"]
+        
+        if not vector_docs or not graph_docs:
+            return 1.0
+            
+        try:
+            prompt = (
+                "Compare the following two sets of evidence. "
+                "Set A (Vector/Unstructured) vs Set B (Graph/Structured).\n\n"
+                f"Set A: {self._format_context(vector_docs)}\n\n"
+                f"Set B: {self._format_context(graph_docs)}\n\n"
+                "Do these sources contradict each other regarding the core facts? "
+                "Return a score from 0.0 (total contradiction) to 1.0 (perfect agreement). "
+                "Return ONLY the number."
+            )
+            response = self.llm_client.generate_text(system_prompt="You are a consistency auditor.", user_prompt=prompt)
+            return float(response.strip())
+        except Exception:
+            return 1.0
+
     def _validate_with_llm(
-        self, answer: str, documents: list[RetrievedDocument]
+        self, answer: str, documents: list[RetrievedDocument], consensus_score: float = 1.0
     ) -> ValidationResult | None:
         try:
             payload = self.llm_client.generate_json(
                 system_prompt=(
                     "You are a strict factuality judge. "
                     "Evaluate whether the answer is directly supported by the supplied evidence. "
+                    "Consider the Source Consensus Coefficient (SCC) provided; lower SCC means sources disagree. "
                     "Return ONLY a JSON object with exactly three keys: "
-                    "\"passed\" (boolean — true only when all key claims are clearly supported), "
-                    "\"confidence\" (number from 0.0 to 1.0), "
-                    "\"rationale\" (one concise sentence explaining the verdict). "
-                    "Do not add any other keys or text outside the JSON object."
+                    "\"passed\" (boolean), \"confidence\" (number), \"rationale\" (string)."
                 ),
                 user_prompt=(
-                    f"Answer:\n{answer}\n\n"
-                    f"Evidence:\n{self._format_context(documents)}\n\n"
-                    "Is every factual claim in the answer directly supported by the evidence above?"
+                    f"Answer: {answer}\n"
+                    f"Evidence: {self._format_context(documents)}\n"
+                    f"Source Consensus Coefficient: {consensus_score}\n\n"
+                    "Is the answer fully supported?"
                 ),
             )
         except Exception:

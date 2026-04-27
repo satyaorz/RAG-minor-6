@@ -8,6 +8,7 @@ from treeqa.agents import (
     AnswerValidator,
     CorrectionEngine,
     QueryDecomposer,
+    TreeRestructurer,
 )
 from treeqa.backends import build_graph_backend, build_llm_client, build_vector_backend
 from treeqa.config import TreeQASettings
@@ -32,6 +33,7 @@ class TreeQAPipeline:
         validator: AnswerValidator | None = None,
         corrector: CorrectionEngine | None = None,
         generator: AnswerGenerator | None = None,
+        restructurer: TreeRestructurer | None = None,
     ) -> None:
         self.settings = settings or TreeQASettings.from_env()
         llm_client = build_llm_client(self.settings)
@@ -44,6 +46,7 @@ class TreeQAPipeline:
         self.validator = validator or AnswerValidator(llm_client=llm_client)
         self.corrector = corrector or CorrectionEngine(llm_client=llm_client)
         self.generator = generator or AnswerGenerator(llm_client=llm_client)
+        self.restructurer = restructurer or TreeRestructurer(llm_client=llm_client)
 
     # ------------------------------------------------------------------
     # Public interface
@@ -79,6 +82,12 @@ class TreeQAPipeline:
                 total_attempts=self.settings.tree_retries + 1)
 
             root = self.decomposer.decompose(active_query)
+            # Carry over verified answers from the previous attempt so we
+            # don't re-run nodes that are structurally identical across retries.
+            prev_answers: dict[str, str] = (
+                {n.question: n.answer for n in result.nodes if n.status == "verified" and n.answer}
+                if result is not None else {}
+            )
             state = WorkflowState(
                 query=active_query, root=root, nodes=self._flatten_leaves(root)
             )
@@ -86,7 +95,7 @@ class TreeQAPipeline:
                 nodes=[n.question for n in state.nodes],
                 total=len(state.nodes))
 
-            self._resolve_tree(state.root, progress_callback=_cb)
+            self._resolve_tree(state.root, progress_callback=_cb, verified_cache=prev_answers)
             state.nodes = self._flatten_leaves(state.root)
             state.final_answer = (
                 state.root.answer
@@ -116,14 +125,24 @@ class TreeQAPipeline:
         node: QueryNode,
         prior_hops: list[tuple[str, str]] | None = None,
         progress_callback: ProgressCallback | None = None,
+        verified_cache: dict[str, str] | None = None,
+        restructure_depth: int = 0,
     ) -> None:
         _cb: ProgressCallback = progress_callback or _noop
         if prior_hops is None:
             prior_hops = []
+        if verified_cache is None:
+            verified_cache = {}
         if node.children:
             accumulated: list[tuple[str, str]] = list(prior_hops)
             for child in node.children:
-                self._resolve_tree(child, accumulated, progress_callback=_cb)
+                self._resolve_tree(
+                    child, 
+                    accumulated, 
+                    progress_callback=_cb, 
+                    verified_cache=verified_cache,
+                    restructure_depth=restructure_depth
+                )
                 if child.answer:
                     accumulated.append((child.question, self._strip_sources(child.answer)))
             node.answer = self.generator.generate_final(node.question, node.children)
@@ -141,13 +160,29 @@ class TreeQAPipeline:
             if confidences:
                 node.validation = self._build_group_validation(node.status, confidences)
             return
-        self._resolve_leaf(node, prior_hops, progress_callback=_cb)
+        if node.question in verified_cache:
+            node.answer = verified_cache[node.question]
+            node.status = "verified"
+            node.attempts = 0
+            _cb(event="node_start", node_id=node.node_id, question=node.question)
+            _cb(event="node_done", node_id=node.node_id, question=node.question,
+                status="verified", answer=self._strip_sources(node.answer), attempts=0)
+            return
+        self._resolve_leaf(
+            node, 
+            prior_hops, 
+            progress_callback=_cb, 
+            verified_cache=verified_cache,
+            restructure_depth=restructure_depth
+        )
 
     def _resolve_leaf(
         self,
         node: QueryNode,
         prior_hops: list[tuple[str, str]] | None = None,
         progress_callback: ProgressCallback | None = None,
+        verified_cache: dict[str, str] | None = None,
+        restructure_depth: int = 0,
     ) -> None:
         _cb: ProgressCallback = progress_callback or _noop
         prior_hops = prior_hops or []
@@ -163,10 +198,38 @@ class TreeQAPipeline:
                 base_question, node.documents, prior_hops=prior_hops
             )
             node.validation = self.validator.validate(node.answer, node.documents)
+            
+            # Update source consensus for tracking
+            if node.documents:
+                source_types = {doc.source_type for doc in node.documents}
+                if len(source_types) > 1:
+                    node.source_consensus = getattr(self.validator, "_calculate_consensus", lambda x: 1.0)(node.documents)
+
             if node.validation.passed:
                 node.status = "verified"
                 break
             retrieval_question = self.corrector.refine(retrieval_question, node.attempts)
+
+        # ART-R Restructuring Loop
+        if (
+            not node.validation.passed 
+            and restructure_depth < self.settings.max_restructures
+        ):
+            _cb(event="node_restructure", node_id=node.node_id, question=base_question)
+            new_sub_nodes = self.restructurer.restructure(node, node.validation.rationale)
+            if new_sub_nodes:
+                node.children = new_sub_nodes
+                node.was_restructured = True
+                node.original_question = base_question
+                # Now resolve this node as a group node
+                self._resolve_tree(
+                    node, 
+                    prior_hops=prior_hops, 
+                    progress_callback=_cb, 
+                    verified_cache=verified_cache,
+                    restructure_depth=restructure_depth + 1
+                )
+                return
 
         if not node.validation or not node.validation.passed:
             node.status = "needs_review"

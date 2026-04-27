@@ -23,6 +23,7 @@ from __future__ import annotations
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
+import logging
 import pathlib
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
@@ -54,20 +55,30 @@ app.add_middleware(
 
 # Singleton pipeline — built once at startup so index files are loaded once.
 _pipeline: TreeQAPipeline | None = None
+_log = logging.getLogger("treeqa.api")
+
+
+def _build_pipeline() -> TreeQAPipeline:
+    """Blocking pipeline construction (loads embeddings, index files, etc.)."""
+    global _settings
+    _settings = TreeQASettings.from_env()
+    _log.info("Loading vector index and embedding model — this may take a minute...")
+    pipeline = TreeQAPipeline(settings=_settings)
+    _log.info("Pipeline ready.")
+    return pipeline
 
 
 @app.on_event("startup")
-def _startup() -> None:
-    global _pipeline, _settings
-    _settings = TreeQASettings.from_env()
-    _pipeline = TreeQAPipeline(settings=_settings)
+async def _startup() -> None:
+    global _pipeline
+    loop = asyncio.get_event_loop()
+    _pipeline = await loop.run_in_executor(_executor, _build_pipeline)
 
 
 def _reload_pipeline() -> None:
     """Re-build the singleton pipeline (called after ingestion of new docs)."""
-    global _pipeline, _settings
-    _settings = TreeQASettings.from_env()
-    _pipeline = TreeQAPipeline(settings=_settings)
+    global _pipeline
+    _pipeline = _build_pipeline()
 
 
 class RunRequest(BaseModel):
@@ -217,7 +228,12 @@ async def run_query_stream(body: RunRequest) -> StreamingResponse:
     loop.run_in_executor(_executor, _run)
 
     async def _generate():
+        import time as _time
+        deadline = _time.monotonic() + _PIPELINE_TIMEOUT
         while True:
+            if _time.monotonic() > deadline:
+                yield f"data: {_json.dumps({'event': 'error', 'message': f'Pipeline timed out after {int(_PIPELINE_TIMEOUT)}s. Try a simpler query.'}, default=str)}\n\n"
+                break
             try:
                 item = q.get_nowait()
             except _q.Empty:
@@ -294,7 +310,12 @@ async def run_rag_stream(body: RunRequest) -> StreamingResponse:
     loop.run_in_executor(_executor, _run)
 
     async def _generate():
+        import time as _time
+        deadline = _time.monotonic() + _PIPELINE_TIMEOUT
         while True:
+            if _time.monotonic() > deadline:
+                yield f"data: {_json.dumps({'event': 'error', 'message': f'RAG timed out after {int(_PIPELINE_TIMEOUT)}s.'}, default=str)}\n\n"
+                break
             try:
                 item = q.get_nowait()
             except _q.Empty:
