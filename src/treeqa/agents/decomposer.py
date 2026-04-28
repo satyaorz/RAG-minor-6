@@ -31,11 +31,18 @@ class QueryDecomposer:
         try:
             payload = self.llm_client.generate_json(
                 system_prompt=(
-                    "You decompose multi-hop questions into short, verifiable sub-questions. "
-                    "Return only JSON in the form {\"sub_questions\": [\"...\"]}."
+                    "You are a Query Architect. Your goal is to decompose complex multi-hop questions "
+                    "into the SMALLEST NECESSARY set of sub-questions.\n\n"
+                    "CRITICAL RULES:\n"
+                    "1. If a question is simple and can be answered from a single document, DO NOT SPLIT IT. "
+                    "Return it as a single sub-question.\n"
+                    "2. Only split if you truly need to find Entity A before you can even search for Entity B.\n"
+                    "3. Do not create redundant or 'exploratory' questions (e.g., 'Who is X?').\n\n"
+                    "Return JSON: {\"sub_questions\": [\"...\"]}."
                 ),
                 user_prompt=f"Question: {query}",
             )
+
         except Exception:
             return []
         return self._extract_questions(payload)

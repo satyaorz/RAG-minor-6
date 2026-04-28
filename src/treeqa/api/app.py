@@ -24,7 +24,9 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
 import logging
+import os
 import pathlib
+from functools import partial
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
@@ -36,7 +38,7 @@ from treeqa.dataset_loader import SUPPORTED_DATASETS, load_and_write_corpus
 from treeqa.ingest import build_local_indices
 from treeqa.pipeline import TreeQAPipeline
 
-_PIPELINE_TIMEOUT = 110.0  # seconds — slightly under the 2-min client timeout
+_PIPELINE_TIMEOUT = float(os.getenv("TREEQA_PIPELINE_TIMEOUT", "110"))  # seconds
 _executor = ThreadPoolExecutor(max_workers=4)
 
 _UI_HTML = pathlib.Path(__file__).resolve().parents[1] / "ui" / "index.html"
@@ -79,6 +81,14 @@ def _reload_pipeline() -> None:
     """Re-build the singleton pipeline (called after ingestion of new docs)."""
     global _pipeline
     _pipeline = _build_pipeline()
+
+
+def _ensure_pipeline() -> TreeQAPipeline:
+    """Ensure the singleton pipeline is ready (lazy-load if startup is still warming)."""
+    global _pipeline
+    if _pipeline is None:
+        _pipeline = _build_pipeline()
+    return _pipeline
 
 
 class RunRequest(BaseModel):
@@ -174,12 +184,61 @@ async def upload_document(file: UploadFile = File(...)) -> JSONResponse:
     })
 
 
+@app.post("/api/upload_batch")
+async def upload_documents(files: list[UploadFile] = File(...)) -> JSONResponse:
+    """Upload multiple .txt/.md files, ingest once, and reload the pipeline."""
+    if not files:
+        raise HTTPException(status_code=400, detail="No files uploaded.")
+
+    bad = []
+    for f in files:
+        suffix = pathlib.Path(f.filename).suffix.lower()
+        if suffix not in _ALLOWED_EXTENSIONS:
+            bad.append(f.filename)
+    if bad:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported types: {', '.join(bad)}. Accepted: {', '.join(sorted(_ALLOWED_EXTENSIONS))}",
+        )
+
+    _DOCS_DIR.mkdir(parents=True, exist_ok=True)
+    saved: list[str] = []
+    total_size = 0
+    for f in files:
+        safe_name = pathlib.Path(f.filename).name
+        dest = _DOCS_DIR / safe_name
+        content = await f.read()
+        dest.write_bytes(content)
+        saved.append(safe_name)
+        total_size += len(content)
+
+    loop = asyncio.get_event_loop()
+    report = await loop.run_in_executor(_executor, build_local_indices, _settings)
+    _reload_pipeline()
+    return JSONResponse(content={
+        "ok": True,
+        "saved_files": saved,
+        "total_size": total_size,
+        "vector_chunks": report.vector_chunks,
+        "graph_facts": report.graph_facts,
+        "message": (
+            f"{len(saved)} file(s) ingested — "
+            f"{report.vector_chunks} vector chunks (unstructured) + "
+            f"{report.graph_facts} graph facts (structured) indexed."
+        ),
+    })
+
+
 @app.post("/api/run")
 async def run_query(body: RunRequest) -> JSONResponse:
+    pipeline = _ensure_pipeline()
     loop = asyncio.get_event_loop()
     try:
         result = await asyncio.wait_for(
-            loop.run_in_executor(_executor, _pipeline.run, body.query),
+            loop.run_in_executor(
+                _executor,
+                partial(pipeline.run, body.query, max_seconds=_PIPELINE_TIMEOUT - 2),
+            ),
             timeout=_PIPELINE_TIMEOUT,
         )
         return JSONResponse(content=asdict(result))
@@ -202,6 +261,7 @@ async def run_query_stream(body: RunRequest) -> StreamingResponse:
         decomposed   — sub-questions list
         node_start   — a leaf node is being resolved
         node_done    — leaf resolved (status, answer, attempts)
+        node_restructure — a leaf node is being restructured
         tree_retry   — whole-tree retry after needs_review
         result       — full PipelineResult JSON (terminal event)
         error        — fatal error (terminal event)
@@ -217,7 +277,12 @@ async def run_query_stream(body: RunRequest) -> StreamingResponse:
 
     def _run():
         try:
-            result = _pipeline.run(body.query, progress_callback=_callback)
+            pipeline = _ensure_pipeline()
+            result = pipeline.run(
+                body.query,
+                progress_callback=_callback,
+                max_seconds=_PIPELINE_TIMEOUT - 2,
+            )
             q.put({"event": "result", "data": asdict(result)})
         except Exception as exc:
             q.put({"event": "error", "message": str(exc)})
@@ -253,10 +318,11 @@ async def run_query_stream(body: RunRequest) -> StreamingResponse:
 
 def _run_traditional_sync(query: str) -> dict:
     """Normal RAG: single-hop retrieve + LLM generation, no decomposition or validation."""
-    docs = _pipeline.retriever.retrieve(query)
+    pipeline = _ensure_pipeline()
+    docs = pipeline.retriever.retrieve(query)
     if docs:
         top_score = round(docs[0].score, 4)
-        answer = _pipeline.generator.generate_for_node(query, docs)
+        answer = pipeline.generator.generate_for_node(query, docs)
     else:
         top_score = 0.0
         answer = "No relevant documents found."
@@ -335,14 +401,17 @@ async def run_rag_stream(body: RunRequest) -> StreamingResponse:
 
 @app.post("/api/compare")
 async def compare_query(body: RunRequest) -> JSONResponse:
-    """Run traditional RAG (retrieval-only, instant) then TreeQA; return side-by-side."""
+    """Run traditional RAG then TreeQA; return side-by-side."""
     loop = asyncio.get_event_loop()
     try:
-        # Traditional RAG: pure retrieval, no LLM — runs in <1s on a thread
+        # Traditional RAG: single-hop retrieve + LLM generation
         trad = await loop.run_in_executor(_executor, _run_traditional_sync, body.query)
         # TreeQA: full multi-hop pipeline with LLM calls — may take up to PIPELINE_TIMEOUT
         tqa = await asyncio.wait_for(
-            loop.run_in_executor(_executor, _pipeline.run, body.query),
+            loop.run_in_executor(
+                _executor,
+                partial(_ensure_pipeline().run, body.query, max_seconds=_PIPELINE_TIMEOUT - 2),
+            ),
             timeout=_PIPELINE_TIMEOUT,
         )
         return JSONResponse(content={"traditional": trad, "treeqa": asdict(tqa)})

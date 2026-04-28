@@ -24,6 +24,9 @@
       --amber-br:  #fcd34d;
       --red:       #dc2626;
       --red-bg:    #fef2f2;
+      --teal:      #0f766e;
+      --teal-bg:   #ecfeff;
+      --teal-br:   #5eead4;
       --shadow-sm: 0 1px 3px rgba(0,0,0,.07);
       --shadow:    0 4px 16px rgba(0,0,0,.08);
       --radius:    12px;
@@ -146,6 +149,7 @@
     .badge.verified    { background: #dcfce7; color: #15803d; }
     .badge.needs_review { background: #fef3c7; color: #92400e; }
     .badge.pending     { background: #f1f5f9; color: var(--muted); }
+    .badge.restructured { background: var(--teal-bg); color: var(--teal); border: 1px solid var(--teal-br); }
 
     .attempts-tag { font-size: .7rem; color: var(--muted); }
 
@@ -166,6 +170,7 @@
     .conf-label { font-size: .72rem; color: var(--muted); white-space: nowrap; }
 
     .node-answer { font-size: .9rem; line-height: 1.6; color: #334155; padding-right: 4px; }
+    .node-original { font-size: .78rem; color: var(--muted); margin-top: 6px; }
 
     /* rationale */
     .rationale {
@@ -672,11 +677,12 @@
   }
 
   function formatStreamEvent(e) {
-    if (e.event === 'start')        return '▶ Starting HAMH-RAG…';
+    if (e.event === 'start')        return _mode === 'rag' ? '▶ Starting Normal RAG…' : '▶ Starting HAMH-RAG…';
     if (e.event === 'tree_attempt') return `🌲 Tree attempt ${e.attempt}/${e.total_attempts}`;
     if (e.event === 'decomposed')   return `🔀 Decomposed into ${e.total} sub-question(s): ${e.nodes.join(' | ')}`;
     if (e.event === 'node_start')   return `⏳ [${e.node_id}]: ${e.question}`;
     if (e.event === 'node_done')    return `${e.status === 'verified' ? '✅' : '⚠️'} [${e.node_id}] ${e.status}`;
+    if (e.event === 'node_restructure') return `🔧 [${e.node_id}] restructuring: ${e.question}`;
     if (e.event === 'tree_retry')   return `🔁 Retry ${e.attempt}: refined → "${e.refined_query}"`;
     if (e.event === 'done')         return `🏁 Done (${e.status})`;
     return null;
@@ -801,12 +807,13 @@
     const review   = nodes.filter(n => n.status === 'needs_review').length;
     const confs    = nodes.filter(n => n.validation).map(n => n.validation.confidence);
     const avgConf  = confs.length ? confs.reduce((a, b) => a + b, 0) / confs.length : 0;
+    const avgPct   = clampPct(Math.round(avgConf * 100));
 
     document.getElementById('stats-bar').innerHTML =
       stat(nodes.length,  'Nodes') +
       stat(verified,      'Verified', '#16a34a') +
       stat(review,        'Review',   '#d97706') +
-      stat(Math.round(avgConf * 100) + '%', 'Avg Conf', '#6366f1');
+      stat(avgPct + '%', 'Avg Conf', '#6366f1');
 
     document.getElementById('answer-card').innerHTML =
       `<h2>✓ Final answer</h2><p>${esc(data.final_answer)}</p>`;
@@ -817,7 +824,7 @@
   }
 
   function renderRAGPane(data) {
-    const pct = Math.round((data.confidence || 0) * 100);
+    const pct = clampPct(Math.round((data.confidence || 0) * 100));
     const cls = pct >= 70 ? 'high' : pct >= 40 ? 'medium' : 'low';
     document.getElementById('rag-answer-card').innerHTML = `
       <h2>⚡ Normal RAG Answer</h2>
@@ -857,8 +864,8 @@
     const tqaDocs     = tqaNodes.reduce((s, n) => s + (n.documents || []).length, 0);
     const tqaVerified = tqaNodes.filter(n => n.status === 'verified').length;
 
-    const tradPct = Math.round(trad.confidence * 100);
-    const tqaPct  = Math.round(tqaAvgConf * 100);
+    const tradPct = clampPct(Math.round(trad.confidence * 100));
+    const tqaPct  = clampPct(Math.round(tqaAvgConf * 100));
     const tradCls = trad.confidence >= .7 ? 'high' : trad.confidence >= .4 ? 'medium' : 'low';
     const tqaCls  = tqaAvgConf  >= .7 ? 'high' : tqaAvgConf  >= .4 ? 'medium' : 'low';
 
@@ -908,6 +915,8 @@
       destroyChart('chart-method');
       const tqaConfs = tqaNodes.filter(n => n.validation).map(n => n.validation.confidence);
       const tqaAvg   = tqaConfs.length ? tqaConfs.reduce((a, b) => a + b, 0) / tqaConfs.length : 0;
+      const tqaAvgPct = clampPct(Math.round(tqaAvg * 100));
+      const tradPct = clampPct(Math.round(_tradData.confidence * 100));
       const tqaDocs  = tqaNodes.reduce((s, n) => s + (n.documents || []).length, 0);
       _charts['chart-method'] = new Chart(document.getElementById('chart-method'), {
         type: 'bar',
@@ -916,13 +925,13 @@
           datasets: [
             {
               label: 'Traditional RAG',
-              data: [Math.round(_tradData.confidence * 100), _tradData.doc_count, 1],
+              data: [tradPct, _tradData.doc_count, 1],
               backgroundColor: 'rgba(100,116,139,.55)',
               borderColor: '#64748b', borderWidth: 1.5, borderRadius: 6,
             },
             {
               label: 'HAMH-RAG',
-              data: [Math.round(tqaAvg * 100), tqaDocs, tqaNodes.length],
+              data: [tqaAvgPct, tqaDocs, tqaNodes.length],
               backgroundColor: 'rgba(99,102,241,.6)',
               borderColor: '#6366f1', borderWidth: 1.5, borderRadius: 6,
             },
@@ -960,7 +969,7 @@
         labels: tqaNodes.map(n => n.node_id),
         datasets: [{
           label: 'Confidence (%)',
-          data:  tqaNodes.map(n => n.validation ? Math.round(n.validation.confidence * 100) : 0),
+          data:  tqaNodes.map(n => n.validation ? clampPct(Math.round(n.validation.confidence * 100)) : 0),
           backgroundColor: nodeColors,
           borderColor: nodeColors.map(c => c.replace(/,[\d.]+\)$/, ',1)')),
           borderWidth: 1.5, borderRadius: 6,
@@ -1048,31 +1057,24 @@
     }
     status.textContent = `Uploading ${valid.length} file(s)…`;
     status.className = 'upload-status ok';
-    let ok = 0; const errors = []; const lastReport = { vector_chunks: 0, graph_facts: 0 };
-    for (const file of valid) {
-      const fd = new FormData();
-      fd.append('file', file);
-      try {
-        const res = await fetch('/api/upload', { method: 'POST', body: fd });
-        if (res.ok) {
-          ok++;
-          const json = await res.json().catch(() => ({}));
-          if (json.vector_chunks !== undefined) {
-            lastReport.vector_chunks += json.vector_chunks;
-            lastReport.graph_facts   += json.graph_facts;
-          }
-        } else {
-          const e = await res.json().catch(() => ({ detail: res.statusText }));
-          errors.push(`${file.name}: ${e.detail}`);
-        }
-      } catch (e) { errors.push(`${file.name}: network error`); }
+    const fd = new FormData();
+    valid.forEach(file => fd.append('files', file));
+    try {
+      const res = await fetch('/api/upload_batch', { method: 'POST', body: fd });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        status.textContent = `⚠ ${data.detail || 'Upload failed'}`;
+        status.className = 'upload-status err';
+        return;
+      }
+      status.innerHTML = `✓ ${data.saved_files.length} file(s) uploaded &amp; ingested — ` +
+        `<strong>${data.vector_chunks}</strong> vector chunks (unstructured) + ` +
+        `<strong>${data.graph_facts}</strong> graph facts (structured) indexed.`;
+      status.className = 'upload-status ok';
+    } catch (e) {
+      status.textContent = '⚠ Network error while uploading files.';
+      status.className = 'upload-status err';
     }
-    status.innerHTML = errors.length
-      ? '⚠ ' + errors.join('; ')
-      : `✓ ${ok} file(s) uploaded &amp; ingested — ` +
-        `<strong>${lastReport.vector_chunks}</strong> vector chunks (unstructured) + ` +
-        `<strong>${lastReport.graph_facts}</strong> graph facts (structured) indexed.`;
-    status.className = errors.length ? 'upload-status err' : 'upload-status ok';
     loadDocuments();
   }
 
@@ -1110,6 +1112,10 @@
     </div>`;
   }
 
+  function clampPct(value) {
+    return Math.max(0, Math.min(100, value));
+  }
+
   function flattenNodes(node) {
     return [node, ...(node.children || []).flatMap(flattenNodes)];
   }
@@ -1133,11 +1139,20 @@
       <span class="badge ${status}">${esc(badge)}</span>
       <span class="attempts-tag">attempt ${node.attempts || 0}</span>
     `;
+    if (node.was_restructured) {
+      meta.innerHTML += `<span class="badge restructured">restructured</span>`;
+    }
     body.appendChild(meta);
 
     const q = el('div', { className: 'node-question' });
     q.textContent = node.question;
     body.appendChild(q);
+
+    if (node.was_restructured && node.original_question) {
+      const orig = el('div', { className: 'node-original' });
+      orig.textContent = `Original: ${node.original_question}`;
+      body.appendChild(orig);
+    }
 
     if (confPct !== null) {
       const cw = el('div', { className: 'conf-bar-wrap' });

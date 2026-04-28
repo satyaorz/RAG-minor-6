@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from treeqa.backends.llm import LLMClient
 from treeqa.models import QueryNode
 
@@ -11,13 +10,15 @@ class TreeRestructurer:
     and proposes a structural mutation (new sub-questions).
     """
 
-    def __init__(self, llm_client: LLMClient) -> None:
+    def __init__(self, llm_client: LLMClient | None = None) -> None:
         self.llm_client = llm_client
 
     def restructure(self, node: QueryNode, rationale: str) -> list[QueryNode] | None:
         """
         Analyzes why a node failed and generates 1-3 new sub-nodes to replace it.
         """
+        if self.llm_client is None:
+            return None
         try:
             payload = self.llm_client.generate_json(
                 system_prompt=(

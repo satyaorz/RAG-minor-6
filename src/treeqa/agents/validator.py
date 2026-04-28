@@ -7,6 +7,7 @@ from treeqa.models import RetrievedDocument, ValidationResult
 _MIN_EVIDENCE_COUNT = 2
 # Minimum lexical overlap ratio for heuristic validation.
 _MIN_OVERLAP_RATIO = 0.35
+_SINGLE_EVIDENCE_SCORE = 0.75
 
 
 class AnswerValidator:
@@ -19,7 +20,11 @@ class AnswerValidator:
         if not documents:
             return ValidationResult(passed=False, confidence=0.0, rationale="No evidence found.")
 
-        if len(documents) < _MIN_EVIDENCE_COUNT:
+        allow_single = (
+            len(documents) == 1
+            and (documents[0].score >= _SINGLE_EVIDENCE_SCORE or documents[0].source_type == "graph")
+        )
+        if len(documents) < _MIN_EVIDENCE_COUNT and not allow_single:
             return ValidationResult(
                 passed=False, 
                 confidence=0.1, 

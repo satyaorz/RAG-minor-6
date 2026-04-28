@@ -59,41 +59,13 @@ def build_local_indices(settings: TreeQASettings | None = None) -> IngestReport:
     faiss_path = vector_index_path.with_suffix(".faiss")
     meta_path = vector_index_path.with_name("vector_meta.json")
 
-    # Optimization: Check if we even need to re-index documents
-    latest_doc_mtime = 0.0
-    if documents_dir.exists():
-        for p in documents_dir.rglob("*"):
-            if p.is_file():
-                latest_doc_mtime = max(latest_doc_mtime, p.stat().st_mtime)
-
-    if (
-        faiss_path.exists() 
-        and meta_path.exists() 
-        and faiss_path.stat().st_mtime > latest_doc_mtime
-    ):
-        print("[ingest] Indices are up to date. Skipping re-indexing.")
-        # Load counts for report
-        try:
-            v_count = len(json.loads(meta_path.read_text(encoding="utf-8")))
-            g_count = sum(1 for _ in graph_index_path.read_text(encoding="utf-8").splitlines() if _.strip())
-        except Exception:
-            v_count, g_count = 0, 0
-            
-        return IngestReport(
-            vector_chunks=v_count,
-            graph_facts=g_count,
-            vector_index_path=str(vector_index_path),
-            graph_index_path=str(graph_index_path),
-        )
-
     chunks = _build_document_chunks(documents_dir)
     facts = _build_graph_facts(graph_dir)
 
+    # Persistence
     _write_jsonl(vector_index_path, [asdict(chunk) for chunk in chunks])
     _write_jsonl(graph_index_path, [asdict(fact) for fact in facts])
 
-    faiss_path = vector_index_path.with_suffix(".faiss")
-    meta_path = vector_index_path.with_name("vector_meta.json")
     _build_faiss_index(chunks, settings.embedding_model, faiss_path, meta_path)
 
     return IngestReport(
@@ -263,11 +235,11 @@ def _build_faiss_index(
     faiss_path: Path,
     meta_path: Path,
 ) -> None:
-    """Encode all chunks once and persist a FAISS IndexFlatIP + JSON metadata.
+    """Encode only new chunks and add them to the FAISS index.
 
-    Skipped gracefully if faiss or sentence-transformers is not installed.
-    On subsequent server starts the embeddings are loaded from disk — no
-    re-encoding required, making startup essentially instant.
+    If an index already exists, we load it, find which chunks are missing
+    (based on source_id), encode only the new ones, and add them.
+    This makes adding documents nearly instant for large indices.
     """
     try:
         import faiss  # type: ignore
@@ -278,25 +250,57 @@ def _build_faiss_index(
 
     from treeqa.retrieval.scoring import normalize_text
 
-    print(f"[ingest] Building FAISS index for {len(chunks)} chunks …")
-    model = SentenceTransformer(model_name)
-    texts = [
-        " ".join(filter(None, [c.title, c.section, normalize_text(c.content)]))
-        for c in chunks
-    ]
-    embeddings = model.encode(texts, normalize_embeddings=True, show_progress_bar=True)
-    embeddings = np.array(embeddings, dtype="float32")
+    existing_chunks: list[dict] = []
+    index = None
 
-    d = embeddings.shape[1]
-    index = faiss.IndexFlatIP(d)  # inner product = cosine for L2-normalised vectors
-    index.add(embeddings)
+    # Try to load existing index and metadata
+    if faiss_path.exists() and meta_path.exists():
+        try:
+            index = faiss.read_index(str(faiss_path))
+            existing_chunks = json.loads(meta_path.read_text(encoding="utf-8"))
+        except Exception as e:
+            print(f"[ingest] Failed to load existing index: {e}. Rebuilding...")
+            index = None
+
+    existing_ids = {c["source_id"] for c in existing_chunks}
+    new_chunks = [c for c in chunks if c.source_id not in existing_ids]
+
+    if not new_chunks:
+        if index is not None and len(existing_chunks) == len(chunks):
+            print("[ingest] Index up to date. No new chunks to encode.")
+            return
+        # If we reach here, we might need to handle deletions, but for now
+        # let's just rebuild if the counts don't match and no new chunks found.
+        if index is not None and len(existing_chunks) != len(chunks):
+            print("[ingest] Chunk count mismatch. Rebuilding index...")
+            index = None
+        else:
+            return
+
+    print(f"[ingest] Encoding {len(new_chunks)} new chunks (out of {len(chunks)} total)...")
+    model = SentenceTransformer(model_name)
+    
+    def _to_text(c):
+        content = c.content if hasattr(c, "content") else c["content"]
+        title = c.title if hasattr(c, "title") else c["title"]
+        section = c.section if hasattr(c, "section") else c["section"]
+        return " ".join(filter(None, [title, section, normalize_text(content)]))
+
+    new_texts = [_to_text(c) for c in new_chunks]
+    new_embeddings = model.encode(new_texts, normalize_embeddings=True, show_progress_bar=True)
+    new_embeddings = np.array(new_embeddings, dtype="float32")
+
+    if index is None:
+        d = new_embeddings.shape[1]
+        index = faiss.IndexFlatIP(d)
+        all_metadata = [asdict(c) for c in new_chunks]
+    else:
+        all_metadata = existing_chunks + [asdict(c) for c in new_chunks]
+
+    index.add(new_embeddings)
 
     faiss_path.parent.mkdir(parents=True, exist_ok=True)
     faiss.write_index(index, str(faiss_path))
-
-    # Metadata saved as JSON (portable, human-readable, no pickle risks)
-    meta_path.write_text(
-        json.dumps([asdict(c) for c in chunks], ensure_ascii=True),
-        encoding="utf-8",
-    )
-    print(f"[ingest] FAISS index saved → {faiss_path} ({index.ntotal} vectors, d={d})")
+    meta_path.write_text(json.dumps(all_metadata, ensure_ascii=True), encoding="utf-8")
+    
+    print(f"[ingest] FAISS index updated → {faiss_path} (Total: {index.ntotal} vectors)")

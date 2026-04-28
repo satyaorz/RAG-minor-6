@@ -47,6 +47,10 @@ def _normalize_answer(text: str) -> str:
     return text
 
 
+def _strip_sources(text: str) -> str:
+    return re.sub(r"\s*Sources:\s.*$", "", text, flags=re.IGNORECASE).strip()
+
+
 def _tokenize(text: str) -> list[str]:
     return _normalize_answer(text).split()
 
@@ -99,6 +103,7 @@ def run_benchmark(
     dataset_path: Path,
     output_dir: Path | None = None,
     limit: int | None = None,
+    include_rag: bool = True,
 ) -> dict[str, Any]:
     pipeline = TreeQAPipeline()
     records = _load_dataset(dataset_path)
@@ -108,6 +113,8 @@ def run_benchmark(
     results: list[dict[str, Any]] = []
     total_em = 0
     total_f1 = 0.0
+    total_rag_em = 0
+    total_rag_f1 = 0.0
 
     for i, record in enumerate(records, start=1):
         question = str(record["question"])
@@ -115,22 +122,41 @@ def run_benchmark(
         print(f"[{i}/{len(records)}] {question[:80]}", flush=True)
         try:
             pipeline_result = pipeline.run(question)
-            predicted = pipeline_result.final_answer or ""
+            predicted_raw = pipeline_result.final_answer or ""
         except Exception as exc:
-            predicted = f"[ERROR: {exc}]"
+            predicted_raw = f"[ERROR: {exc}]"
+
+        predicted = _strip_sources(predicted_raw)
 
         em = _exact_match(gold, predicted)
         f1 = _token_f1(gold, predicted)
         total_em += em
         total_f1 += f1
 
+        rag_row: dict[str, Any] = {}
+        if include_rag:
+            rag_docs = pipeline.retriever.retrieve(question)
+            rag_raw = pipeline.generator.generate_for_node(question, rag_docs)
+            rag_pred = _strip_sources(rag_raw)
+            rag_em = _exact_match(gold, rag_pred)
+            rag_f1 = _token_f1(gold, rag_pred)
+            total_rag_em += rag_em
+            total_rag_f1 += rag_f1
+            rag_row = {
+                "rag_predicted": rag_pred,
+                "rag_em": rag_em,
+                "rag_f1": round(rag_f1, 4),
+            }
+
         results.append(
             {
                 "question": question,
                 "gold": gold,
                 "predicted": predicted,
+                "predicted_raw": predicted_raw,
                 "em": em,
                 "f1": round(f1, 4),
+                **rag_row,
             }
         )
 
@@ -140,6 +166,9 @@ def run_benchmark(
         "exact_match": round(total_em / n, 4) if n else 0.0,
         "f1": round(total_f1 / n, 4) if n else 0.0,
     }
+    if include_rag:
+        summary["rag_exact_match"] = round(total_rag_em / n, 4) if n else 0.0
+        summary["rag_f1"] = round(total_rag_f1 / n, 4) if n else 0.0
 
     # Write results
     if output_dir is None:
@@ -155,6 +184,9 @@ def run_benchmark(
     print(f"  Questions:   {summary['n']}")
     print(f"  Exact Match: {summary['exact_match']:.1%}")
     print(f"  Token F1:    {summary['f1']:.1%}")
+    if include_rag:
+        print(f"  RAG EM:      {summary['rag_exact_match']:.1%}")
+        print(f"  RAG F1:      {summary['rag_f1']:.1%}")
     print(f"  Results:     {results_path}")
 
     return {**summary, "results_path": str(results_path)}
@@ -169,6 +201,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--dataset", required=True, help="Path to JSONL benchmark file")
     parser.add_argument("--output-dir", default=None, help="Directory to write result files")
     parser.add_argument("--limit", type=int, default=None, help="Max questions to evaluate")
+    parser.add_argument("--no-rag", action="store_true", help="Disable Normal RAG baseline scoring")
     args = parser.parse_args(argv)
 
     dataset_path = Path(args.dataset)
@@ -177,7 +210,7 @@ def main(argv: list[str] | None = None) -> None:
         sys.exit(1)
 
     output_dir = Path(args.output_dir) if args.output_dir else None
-    run_benchmark(dataset_path, output_dir=output_dir, limit=args.limit)
+    run_benchmark(dataset_path, output_dir=output_dir, limit=args.limit, include_rag=not args.no_rag)
 
 
 if __name__ == "__main__":

@@ -28,6 +28,7 @@ class QueryNode:
     documents: list[RetrievedDocument] = field(default_factory=list)
     validation: ValidationResult | None = None
     children: list["QueryNode"] = field(default_factory=list)
+    hop_context: str = ""
     
     # ART-R specific tracking
     source_consensus: float = 1.0  # 1.0 = total agreement, 0.0 = total conflict

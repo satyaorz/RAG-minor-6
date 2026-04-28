@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import time
 from typing import Callable
 
 from treeqa.agents import (
@@ -52,7 +53,12 @@ class TreeQAPipeline:
     # Public interface
     # ------------------------------------------------------------------
 
-    def run(self, query: str, progress_callback: ProgressCallback | None = None) -> PipelineResult:
+    def run(
+        self,
+        query: str,
+        progress_callback: ProgressCallback | None = None,
+        max_seconds: float | None = None,
+    ) -> PipelineResult:
         """Run HAMH-RAG on *query*, optionally streaming progress events via *progress_callback*.
 
         Tree-level retry: if the fully resolved tree status is ``needs_review``
@@ -72,6 +78,8 @@ class TreeQAPipeline:
         active_query = query
         result: PipelineResult | None = None
 
+        deadline = time.monotonic() + max_seconds if max_seconds else None
+
         for tree_attempt in range(self.settings.tree_retries + 1):
             if tree_attempt > 0:
                 # Refine the root query and rebuild the decomposition tree
@@ -84,8 +92,12 @@ class TreeQAPipeline:
             root = self.decomposer.decompose(active_query)
             # Carry over verified answers from the previous attempt so we
             # don't re-run nodes that are structurally identical across retries.
-            prev_answers: dict[str, str] = (
-                {n.question: n.answer for n in result.nodes if n.status == "verified" and n.answer}
+            prev_answers: dict[tuple[str, str], str] = (
+                {
+                    (n.question, getattr(n, "hop_context", "")): n.answer
+                    for n in result.nodes
+                    if n.status == "verified" and n.answer
+                }
                 if result is not None else {}
             )
             state = WorkflowState(
@@ -95,12 +107,18 @@ class TreeQAPipeline:
                 nodes=[n.question for n in state.nodes],
                 total=len(state.nodes))
 
-            self._resolve_tree(state.root, progress_callback=_cb, verified_cache=prev_answers)
-            state.nodes = self._flatten_leaves(state.root)
-            state.final_answer = (
-                state.root.answer
-                or self.generator.generate_final(state.query, state.nodes)
+            self._resolve_tree(
+                state.root,
+                progress_callback=_cb,
+                verified_cache=prev_answers,
+                deadline=deadline,
             )
+            state.nodes = self._flatten_leaves(state.root)
+            verified_nodes = [n for n in state.nodes if n.status == "verified"]
+            if state.root.status == "verified" and state.root.answer:
+                state.final_answer = state.root.answer
+            else:
+                state.final_answer = self.generator.generate_final(state.query, verified_nodes)
 
             result = PipelineResult(
                 query=state.query,
@@ -125,14 +143,19 @@ class TreeQAPipeline:
         node: QueryNode,
         prior_hops: list[tuple[str, str]] | None = None,
         progress_callback: ProgressCallback | None = None,
-        verified_cache: dict[str, str] | None = None,
+        verified_cache: dict[tuple[str, str], str] | None = None,
         restructure_depth: int = 0,
+        deadline: float | None = None,
     ) -> None:
         _cb: ProgressCallback = progress_callback or _noop
         if prior_hops is None:
             prior_hops = []
         if verified_cache is None:
             verified_cache = {}
+
+        if deadline is not None and time.monotonic() > deadline:
+            self._mark_timeout(node)
+            return
             
         if node.children:
             import concurrent.futures
@@ -153,6 +176,9 @@ class TreeQAPipeline:
             )
             
             if do_parallel:
+                if deadline is not None and time.monotonic() > deadline:
+                    self._mark_timeout(node)
+                    return
                 # Independent siblings can run in parallel
                 with concurrent.futures.ThreadPoolExecutor(max_workers=len(node.children)) as executor:
                     futures = {
@@ -162,7 +188,8 @@ class TreeQAPipeline:
                             prior_hops, 
                             _cb, 
                             verified_cache, 
-                            restructure_depth
+                            restructure_depth,
+                            deadline,
                         ): child for child in node.children
                     }
                     concurrent.futures.wait(futures)
@@ -170,17 +197,22 @@ class TreeQAPipeline:
                 # Sequential resolution for dependent hops
                 accumulated: list[tuple[str, str]] = list(prior_hops)
                 for child in node.children:
+                    if deadline is not None and time.monotonic() > deadline:
+                        self._mark_timeout(node)
+                        return
                     self._resolve_tree(
                         child, 
                         accumulated, 
                         _cb, 
                         verified_cache, 
-                        restructure_depth
+                        restructure_depth,
+                        deadline,
                     )
-                    if child.answer:
+                    if child.status == "verified" and child.answer:
                         accumulated.append((child.question, self._strip_sources(child.answer)))
             
-            node.answer = self.generator.generate_final(node.question, node.children)
+            verified_children = [child for child in node.children if child.status == "verified"]
+            node.answer = self.generator.generate_final(node.question, verified_children)
             node.attempts = max((child.attempts for child in node.children), default=0)
             node.status = (
                 "verified"
@@ -195,8 +227,10 @@ class TreeQAPipeline:
             if confidences:
                 node.validation = self._build_group_validation(node.status, confidences)
             return
-        if node.question in verified_cache:
-            node.answer = verified_cache[node.question]
+        node.hop_context = self._hop_context(prior_hops)
+        cache_key = self._cache_key(node.question, prior_hops)
+        if cache_key in verified_cache:
+            node.answer = verified_cache[cache_key]
             node.status = "verified"
             node.attempts = 0
             _cb(event="node_start", node_id=node.node_id, question=node.question)
@@ -216,17 +250,26 @@ class TreeQAPipeline:
         node: QueryNode,
         prior_hops: list[tuple[str, str]] | None = None,
         progress_callback: ProgressCallback | None = None,
-        verified_cache: dict[str, str] | None = None,
+        verified_cache: dict[tuple[str, str], str] | None = None,
         restructure_depth: int = 0,
+        deadline: float | None = None,
     ) -> None:
         _cb: ProgressCallback = progress_callback or _noop
         prior_hops = prior_hops or []
         base_question = node.question
+        node.hop_context = self._hop_context(prior_hops)
         retrieval_question = self._enrich_query(base_question, prior_hops)
+
+        if deadline is not None and time.monotonic() > deadline:
+            self._mark_timeout(node)
+            return
 
         _cb(event="node_start", node_id=node.node_id, question=base_question)
 
         for attempt in range(self.settings.max_retries + 1):
+            if deadline is not None and time.monotonic() > deadline:
+                self._mark_timeout(node)
+                return
             node.attempts = attempt + 1
             node.documents = self.retriever.retrieve(retrieval_question)
             node.answer = self.generator.generate_for_node(
@@ -236,6 +279,8 @@ class TreeQAPipeline:
             
             if node.validation.passed:
                 node.status = "verified"
+                if verified_cache is not None:
+                    verified_cache[self._cache_key(base_question, prior_hops)] = node.answer
                 break
             
             # Optimization: If category mismatch is the reason for failure, 
@@ -249,6 +294,7 @@ class TreeQAPipeline:
         if (
             not node.validation.passed 
             and restructure_depth < self.settings.max_restructures
+            and self.restructurer is not None
         ):
             _cb(event="node_restructure", node_id=node.node_id, question=base_question)
             new_sub_nodes = self.restructurer.restructure(node, node.validation.rationale)
@@ -262,7 +308,8 @@ class TreeQAPipeline:
                     prior_hops=prior_hops, 
                     progress_callback=_cb, 
                     verified_cache=verified_cache,
-                    restructure_depth=restructure_depth + 1
+                    restructure_depth=restructure_depth + 1,
+                    deadline=deadline,
                 )
                 return
 
@@ -292,6 +339,27 @@ class TreeQAPipeline:
     @staticmethod
     def _strip_sources(text: str) -> str:
         return re.sub(r"\s*Sources:\s.*$", "", text, flags=re.IGNORECASE).strip()
+
+    @staticmethod
+    def _mark_timeout(node: QueryNode) -> None:
+        if not node.answer:
+            node.answer = f"Insufficient time budget to answer: {node.question}"
+        node.status = "needs_review"
+        node.validation = ValidationResult(
+            passed=False,
+            confidence=0.0,
+            rationale="Time budget exceeded.",
+        )
+
+    @staticmethod
+    def _hop_context(prior_hops: list[tuple[str, str]]) -> str:
+        if not prior_hops:
+            return ""
+        return " | ".join(f"{q} => {a}" for q, a in prior_hops)
+
+    @classmethod
+    def _cache_key(cls, question: str, prior_hops: list[tuple[str, str]]) -> tuple[str, str]:
+        return (question, cls._hop_context(prior_hops))
 
     def _flatten_leaves(self, root: QueryNode) -> list[QueryNode]:
         if root.is_leaf:
