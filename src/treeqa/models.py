@@ -29,6 +29,12 @@ class QueryNode:
     validation: ValidationResult | None = None
     children: list["QueryNode"] = field(default_factory=list)
     hop_context: str = ""
+    retrieval_route: str = ""
+    retrieval_reason: str = ""
+    retrieval_backends: list[str] = field(default_factory=list)
+    retrieval_latency_ms: float = 0.0
+    retrieval_fallback: bool = False
+    retrieval_signals: dict[str, float] = field(default_factory=dict)
     
     # ART-R specific tracking
     source_consensus: float = 1.0  # 1.0 = total agreement, 0.0 = total conflict

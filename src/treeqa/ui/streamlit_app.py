@@ -5,8 +5,20 @@ from html import escape
 
 import streamlit as st
 
-from treeqa.models import QueryNode
+from treeqa.models import QueryNode, RetrievedDocument
 from treeqa.pipeline import TreeQAPipeline
+
+
+def _standard_rag_docs(pipeline: TreeQAPipeline, query: str) -> list[RetrievedDocument]:
+    """Normal RAG baseline: vector-only top-k retrieval."""
+    top_k = max(1, int(getattr(pipeline.retriever, "top_k", pipeline.settings.retrieval_top_k)))
+    vector_backend = getattr(pipeline.retriever, "vector_backend", None)
+    if vector_backend is None or not hasattr(vector_backend, "search"):
+        return []
+    try:
+        return vector_backend.search(query, top_k)
+    except Exception:
+        return []
 
 
 def main() -> None:
@@ -24,7 +36,7 @@ def main() -> None:
         ["⚡ Normal RAG", "🌳 TreeQA", "⚖ Compare Both"],
         horizontal=True,
         help=(
-            "Normal RAG: single-hop retrieve + LLM answer. "
+            "Normal RAG: vector-only single-hop retrieve + LLM answer. "
             "TreeQA: decompose → retrieve → validate → synthesise. "
             "Compare: run both side-by-side."
         ),
@@ -50,14 +62,14 @@ def main() -> None:
 
         else:  # Compare Both
             col_rag, col_tqa = st.columns(2)
-            docs = pipeline.retriever.retrieve(query)
+            docs = _standard_rag_docs(pipeline, query)
             rag_answer = pipeline.generator.generate_for_node(query, docs)
 
             with col_rag:
                 st.subheader("⚡ Normal RAG")
                 st.info(rag_answer)
                 top_score = docs[0].score if docs else 0.0
-                st.caption(f"Retrieval confidence: {top_score:.2%} · {len(docs)} doc(s) · no decomposition")
+                st.caption(f"Retrieval confidence: {top_score:.2%} · {len(docs)} doc(s) · vector-only, no decomposition")
                 with st.expander("Retrieved documents"):
                     for doc in docs:
                         st.markdown(f"- `{doc.source_type}:{doc.source_id}` score `{doc.score:.3f}`")
@@ -78,7 +90,7 @@ def main() -> None:
 
 def _render_rag(pipeline: TreeQAPipeline, query: str) -> None:
     """Render Normal RAG results: LLM answer + retrieved evidence."""
-    docs = pipeline.retriever.retrieve(query)
+    docs = _standard_rag_docs(pipeline, query)
     answer = pipeline.generator.generate_for_node(query, docs)
 
     st.subheader("⚡ Normal RAG Answer")
@@ -89,7 +101,7 @@ def _render_rag(pipeline: TreeQAPipeline, query: str) -> None:
         st.caption(
             f"Retrieval confidence: {top_score:.2%} · "
             f"{len(docs)} document(s) retrieved · "
-            "no query decomposition or hallucination validation"
+            "vector-only retrieval, no decomposition or hallucination validation"
         )
 
     st.subheader(f"Retrieved Evidence ({len(docs)} document(s))")

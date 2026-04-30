@@ -287,6 +287,41 @@ class BuildFaissIndexTest(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
+# build_vector_backend fallback behavior
+# ---------------------------------------------------------------------------
+
+class BuildVectorBackendFallbackTest(unittest.TestCase):
+    def test_local_provider_falls_back_when_faiss_missing(self) -> None:
+        from treeqa.backends.vector import LocalVectorBackend, build_vector_backend
+        from treeqa.config import TreeQASettings
+
+        docs = _make_docs(3)
+        with tempfile.TemporaryDirectory() as tmp:
+            data_dir = Path(tmp)
+            index_dir = data_dir / "index"
+            index_dir.mkdir(parents=True, exist_ok=True)
+            vector_jsonl = index_dir / "vector_index.jsonl"
+            vector_jsonl.write_text(
+                "\n".join(json.dumps(doc, ensure_ascii=True) for doc in docs) + "\n",
+                encoding="utf-8",
+            )
+            # Presence of these files would normally trigger FaissVectorBackend.
+            (index_dir / "vector_index.faiss").write_bytes(b"fake-faiss-index")
+            (index_dir / "vector_meta.json").write_text(
+                json.dumps(docs, ensure_ascii=True), encoding="utf-8"
+            )
+
+            settings = TreeQASettings(
+                vector_provider="local",
+                data_dir=str(data_dir),
+            )
+            with patch.dict("sys.modules", {"faiss": None}):
+                backend = build_vector_backend(settings)
+
+            self.assertIsInstance(backend, LocalVectorBackend)
+
+
+# ---------------------------------------------------------------------------
 # Pipeline utilities — _enrich_query and _strip_sources
 # ---------------------------------------------------------------------------
 

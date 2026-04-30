@@ -1,9 +1,19 @@
-__all__ = ["HybridRetriever"]
+__all__ = ["HybridRetriever", "QueryRouter", "RetrievalTrace", "RoutePlan"]
 
 
 def __getattr__(name: str):
-    if name == "HybridRetriever":
-        from treeqa.retrieval.hybrid import HybridRetriever
+    if name in {"HybridRetriever", "QueryRouter", "RetrievalTrace", "RoutePlan"}:
+        from treeqa.retrieval.hybrid import (
+            HybridRetriever,
+            QueryRouter,
+            RetrievalTrace,
+            RoutePlan,
+        )
 
-        return HybridRetriever
+        return {
+            "HybridRetriever": HybridRetriever,
+            "QueryRouter": QueryRouter,
+            "RetrievalTrace": RetrievalTrace,
+            "RoutePlan": RoutePlan,
+        }[name]
     raise AttributeError(name)

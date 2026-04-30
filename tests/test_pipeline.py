@@ -9,6 +9,7 @@ from treeqa.agents.decomposer import QueryDecomposer
 from treeqa.config import TreeQASettings
 from treeqa.models import PipelineResult, QueryNode, RetrievedDocument, ValidationResult
 from treeqa.pipeline import TreeQAPipeline
+from treeqa.retrieval.hybrid import RetrievalTrace
 
 
 # ---------------------------------------------------------------------------
@@ -208,7 +209,168 @@ class TreeQAPipelineTest(unittest.TestCase):
         restructurer.restructure.assert_called_once()
         self.assertEqual(result.root.status, "verified")
 
+    def test_pipeline_respects_max_retries_override(self) -> None:
+        failing_validator = _stub_validator(passed=False, confidence=0.1)
+        pipeline = _make_pipeline(validator=failing_validator)
+
+        result = pipeline.run("What is HotpotQA?", max_retries_override=0)
+
+        self.assertEqual(result.root.attempts, 1)
+
+    def test_pipeline_respects_tree_retries_override(self) -> None:
+        corrector = MagicMock()
+        corrector.refine.return_value = "Refined once"
+        pipeline = _make_pipeline(
+            validator=_stub_validator(passed=True, confidence=0.95),
+            corrector=corrector,
+        )
+
+        pipeline.run("What is HotpotQA?", tree_retries_override=0)
+
+        corrector.refine.assert_not_called()
+
+    def test_pipeline_respects_max_restructures_override(self) -> None:
+        failing_validator = _stub_validator(passed=False, confidence=0.1)
+        restructurer = _stub_restructurer(
+            new_nodes=[QueryNode(node_id="sub-1", question="A"), QueryNode(node_id="sub-2", question="B")]
+        )
+        pipeline = _make_pipeline(
+            validator=failing_validator,
+            restructurer=restructurer,
+        )
+
+        pipeline.run("Complex Question", max_restructures_override=0)
+
+        restructurer.restructure.assert_not_called()
+
+    def test_pipeline_bridges_director_country_entity(self) -> None:
+        class _Retriever:
+            def __init__(self) -> None:
+                self.top_k = 3
+                self.vector_backend = self
+
+            def retrieve_with_trace(self, question: str):
+                docs = [
+                    RetrievedDocument(
+                        source_id="The_Star_of_Santa_Clara-chunk-1",
+                        source_type="vector",
+                        content="The Star of Santa Clara is a 1958 film directed by Werner Jacobs.",
+                        score=0.9,
+                    )
+                ]
+                trace = RetrievalTrace(
+                    route="graph_first",
+                    query_type="entity_relation",
+                    reason="test",
+                    signals={},
+                    vector_limit=3,
+                    graph_limit=3,
+                    backends_used=["vector"],
+                )
+                return docs, trace
+
+            def retrieve(self, question: str):
+                docs, _trace = self.retrieve_with_trace(question)
+                return docs
+
+            def search(self, question: str, limit: int) -> list[RetrievedDocument]:
+                return [
+                    RetrievedDocument(
+                        source_id="Werner_Jacobs-chunk-1",
+                        source_type="vector",
+                        content="Werner Jacobs was a German film director.",
+                        score=0.88,
+                    )
+                ][:limit]
+
+        def _validate(answer: str, docs: list[RetrievedDocument]) -> ValidationResult:
+            has_country_evidence = any(
+                "german film director" in d.content.lower()
+                for d in docs
+            )
+            return ValidationResult(
+                passed=has_country_evidence,
+                confidence=0.9 if has_country_evidence else 0.1,
+                rationale="Grounded." if has_country_evidence else "Insufficient evidence.",
+            )
+
+        validator = MagicMock()
+        validator.validate.side_effect = _validate
+        generator = MagicMock()
+        generator.generate_for_node.return_value = (
+            "Werner Jacobs was a German film director. Sources: vector:Werner_Jacobs-chunk-1"
+        )
+        generator.generate_final.return_value = (
+            "No, one director is American and the other is German. Sources: vector:Werner_Jacobs-chunk-1"
+        )
+
+        pipeline = _make_pipeline(
+            retriever=_Retriever(),
+            validator=validator,
+            generator=generator,
+            corrector=_stub_corrector(),
+        )
+
+        result = pipeline.run(
+            "What country is the director of The Star Of Santa Clara from?",
+            max_retries_override=0,
+            max_restructures_override=0,
+            tree_retries_override=0,
+        )
+
+        self.assertEqual(result.root.status, "verified")
+        self.assertIn("vector_entity_bridge", result.root.retrieval_backends)
+
+    def test_pipeline_does_not_leak_sibling_answer_into_independent_query(self) -> None:
+        class _Retriever:
+            def __init__(self) -> None:
+                self.queries: list[str] = []
+
+            def retrieve(self, question: str) -> list[RetrievedDocument]:
+                self.queries.append(question)
+                return [
+                    RetrievedDocument(
+                        source_id="doc-1",
+                        source_type="vector",
+                        content=f"Evidence for: {question}",
+                        score=0.9,
+                    )
+                ]
+
+        decomposer = MagicMock()
+        decomposer.decompose.return_value = QueryNode(
+            node_id="root",
+            question="Combined query",
+            children=[
+                QueryNode(node_id="node-1", question="Who directed Film A?"),
+                QueryNode(node_id="node-2", question="What country is the director of Film B from?"),
+            ],
+        )
+
+        retriever = _Retriever()
+        validator = _stub_validator(passed=True, confidence=0.95)
+        generator = MagicMock()
+        generator.generate_for_node.side_effect = [
+            "Director A. Sources: vector:doc-1",
+            "Director B is from Country B. Sources: vector:doc-1",
+        ]
+        generator.generate_final.return_value = "Final"
+
+        pipeline = _make_pipeline(
+            decomposer=decomposer,
+            retriever=retriever,
+            validator=validator,
+            generator=generator,
+        )
+
+        pipeline.run("Combined query", tree_retries_override=0, max_retries_override=0)
+
+        self.assertEqual(retriever.queries[0], "Who directed Film A?")
+        self.assertEqual(
+            retriever.queries[1],
+            "What country is the director of Film B from?",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
-

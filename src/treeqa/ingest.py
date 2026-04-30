@@ -250,6 +250,10 @@ def _build_faiss_index(
 
     from treeqa.retrieval.scoring import normalize_text
 
+    if not chunks:
+        print("[ingest] No chunks available. Skipping FAISS indexing.")
+        return
+
     existing_chunks: list[dict] = []
     index = None
 
@@ -265,6 +269,11 @@ def _build_faiss_index(
     existing_ids = {c["source_id"] for c in existing_chunks}
     new_chunks = [c for c in chunks if c.source_id not in existing_ids]
 
+    if index is None and not new_chunks:
+        # Rebuild from scratch when metadata is out of sync.
+        existing_chunks = []
+        new_chunks = chunks
+
     if not new_chunks:
         if index is not None and len(existing_chunks) == len(chunks):
             print("[ingest] Index up to date. No new chunks to encode.")
@@ -274,10 +283,15 @@ def _build_faiss_index(
         if index is not None and len(existing_chunks) != len(chunks):
             print("[ingest] Chunk count mismatch. Rebuilding index...")
             index = None
+            existing_chunks = []
+            new_chunks = chunks
         else:
             return
 
     print(f"[ingest] Encoding {len(new_chunks)} new chunks (out of {len(chunks)} total)...")
+    if not new_chunks:
+        print("[ingest] No new chunks to encode after rebuild. Skipping.")
+        return
     model = SentenceTransformer(model_name)
     
     def _to_text(c):

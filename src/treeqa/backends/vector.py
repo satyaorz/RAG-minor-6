@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from typing import Protocol
 
 from treeqa.config import TreeQASettings
 from treeqa.models import RetrievedDocument
 from treeqa.retrieval.scoring import lexical_score, normalize_text
+
+_log = logging.getLogger(__name__)
 
 
 class VectorBackend(Protocol):
@@ -403,11 +406,17 @@ def build_vector_backend(settings: TreeQASettings) -> VectorBackend:
         faiss_path = Path(str(index_path)).with_suffix(".faiss")
         meta_path = Path(str(index_path)).with_name("vector_meta.json")
         if faiss_path.exists() and meta_path.exists():
-            return FaissVectorBackend(
-                faiss_path=str(faiss_path),
-                meta_path=str(meta_path),
-                embedding_model=settings.embedding_model,
-            )
+            try:
+                return FaissVectorBackend(
+                    faiss_path=str(faiss_path),
+                    meta_path=str(meta_path),
+                    embedding_model=settings.embedding_model,
+                )
+            except (ImportError, ModuleNotFoundError):
+                _log.warning(
+                    "FAISS index detected but faiss-cpu is not installed; "
+                    "falling back to LocalVectorBackend."
+                )
         return LocalVectorBackend(
             index_path=str(index_path),
             embedding_model=settings.embedding_model,

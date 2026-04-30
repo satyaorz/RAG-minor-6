@@ -31,6 +31,14 @@ class AnswerValidator:
                 rationale=f"Insufficient evidence count ({len(documents)})."
             )
 
+        lowered = answer.strip().lower()
+        if lowered.startswith("insufficient evidence") or lowered.startswith("no grounded answer"):
+            return ValidationResult(
+                passed=False,
+                confidence=0.0,
+                rationale="Answer indicates insufficient evidence.",
+            )
+
         if self.llm_client is not None:
             return self._validate_consolidated(answer, documents)
 

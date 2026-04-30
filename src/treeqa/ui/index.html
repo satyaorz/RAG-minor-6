@@ -76,6 +76,80 @@
     .btn-run:active { transform: scale(.97); }
     .btn-run:disabled { background: #a5b4fc; cursor: not-allowed; }
     .query-hint { font-size: .8rem; color: var(--muted); }
+    .run-config {
+      margin-top: 14px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: #f8fafc;
+      overflow: hidden;
+    }
+    .run-config summary {
+      padding: 10px 12px;
+      font-size: .84rem;
+      font-weight: 600;
+      color: #334155;
+      cursor: pointer;
+      user-select: none;
+      list-style: none;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .run-config summary::-webkit-details-marker { display: none; }
+    .run-config summary::after {
+      content: '›';
+      color: var(--muted);
+      transition: transform .2s;
+      font-size: 1rem;
+    }
+    .run-config[open] summary::after { transform: rotate(90deg); }
+    .run-config-body {
+      border-top: 1px solid var(--border);
+      padding: 12px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+      gap: 10px;
+      align-items: start;
+    }
+    .cfg-field {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      font-size: .8rem;
+      color: #475569;
+    }
+    .cfg-field input[type=number] {
+      border: 1.5px solid var(--border);
+      border-radius: 8px;
+      padding: 7px 10px;
+      font-family: inherit;
+      font-size: .84rem;
+      color: var(--text);
+      background: #fff;
+    }
+    .cfg-field input[type=number]:focus {
+      outline: none;
+      border-color: var(--indigo);
+    }
+    .cfg-toggle {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      font-size: .82rem;
+      color: #334155;
+    }
+    .cfg-toggle input[type=checkbox] {
+      width: 15px;
+      height: 15px;
+      accent-color: var(--indigo);
+      cursor: pointer;
+    }
+    .cfg-summary {
+      font-size: .72rem;
+      color: var(--muted);
+      font-weight: 500;
+    }
 
     /* ─── Spinner ────────────────────────────────────────────────────────── */
     .spinner-wrap { display: flex; align-items: center; gap: 12px; padding: 20px 0; }
@@ -111,6 +185,81 @@
     .answer-card h2 { font-size: .8rem; font-weight: 700; text-transform: uppercase;
                        letter-spacing: .08em; color: var(--green); margin-bottom: 10px; }
     .answer-card p  { font-size: 1rem; line-height: 1.65; color: var(--text); }
+    .routing-card {
+      background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+      border: 1.5px solid #cbd5e1;
+      border-radius: var(--radius);
+      padding: 18px 20px;
+      margin-bottom: 20px;
+      box-shadow: var(--shadow-sm);
+    }
+    .routing-head {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 10px; margin-bottom: 10px; flex-wrap: wrap;
+    }
+    .routing-title {
+      font-size: .78rem; font-weight: 800; text-transform: uppercase;
+      letter-spacing: .08em; color: #334155;
+    }
+    .routing-subtitle { font-size: .78rem; color: var(--muted); }
+    .routing-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+      gap: 10px;
+      margin: 10px 0;
+    }
+    .routing-metric {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 12px;
+    }
+    .routing-metric-label {
+      font-size: .68rem;
+      text-transform: uppercase;
+      letter-spacing: .07em;
+      color: var(--muted);
+      margin-bottom: 5px;
+    }
+    .routing-metric-value {
+      font-size: .88rem;
+      font-weight: 700;
+      color: #0f172a;
+      word-break: break-word;
+    }
+    .route-chip {
+      display: inline-flex;
+      align-items: center;
+      font-size: .68rem;
+      font-weight: 700;
+      border-radius: 999px;
+      padding: 2px 9px;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      border: 1px solid transparent;
+    }
+    .route-chip.vector_only,
+    .route-chip.vector_first {
+      background: #e0e7ff;
+      color: #3730a3;
+      border-color: #a5b4fc;
+    }
+    .route-chip.graph_first {
+      background: #ccfbf1;
+      color: #0f766e;
+      border-color: #5eead4;
+    }
+    .route-chip.hybrid_parallel {
+      background: #ede9fe;
+      color: #6d28d9;
+      border-color: #c4b5fd;
+    }
+    .route-reason {
+      margin-top: 8px;
+      font-size: .8rem;
+      color: #475569;
+      line-height: 1.5;
+    }
 
     /* ─── Section heading ────────────────────────────────────────────────── */
     .section-heading {
@@ -150,6 +299,11 @@
     .badge.needs_review { background: #fef3c7; color: #92400e; }
     .badge.pending     { background: #f1f5f9; color: var(--muted); }
     .badge.restructured { background: var(--teal-bg); color: var(--teal); border: 1px solid var(--teal-br); }
+    .badge.route {
+      background: #eef2ff;
+      color: #3730a3;
+      border: 1px solid #c7d2fe;
+    }
 
     .attempts-tag { font-size: .7rem; color: var(--muted); }
 
@@ -387,6 +541,7 @@
     .stream-log-entry.start    { color: var(--indigo); font-weight: 600; }
     .stream-log-entry.verified { color: var(--green); }
     .stream-log-entry.needs_review { color: var(--amber); }
+    .stream-log-entry.node_route { color: #0f766e; }
     .stream-log-entry.retry    { color: #f59e0b; font-weight: 600; }
     .stream-log-entry.done     { color: var(--green); font-weight: 600; }
   </style>
@@ -490,6 +645,43 @@
       <button class="btn-run" id="run-btn" onclick="handleRun()">Run ▶</button>
       <span class="query-hint">Ctrl+Enter also runs the query.</span>
     </div>
+
+    <details class="run-config" id="run-config">
+      <summary>
+        <span>⚙ Run Settings</span>
+        <span class="cfg-summary" id="cfg-summary"></span>
+      </summary>
+      <div class="run-config-body">
+        <label class="cfg-field">
+          Request timeout (seconds)
+          <input type="number" id="cfg-timeout-seconds" min="15" max="600" step="5" value="120" />
+        </label>
+        <label class="cfg-field">
+          Node retries (HAMH-RAG)
+          <input type="number" id="cfg-node-retries" min="0" max="5" step="1" value="1" />
+        </label>
+        <label class="cfg-field">
+          Tree retries (HAMH-RAG)
+          <input type="number" id="cfg-tree-retries" min="0" max="5" step="1" value="0" />
+        </label>
+        <label class="cfg-field">
+          Max restructures (HAMH-RAG)
+          <input type="number" id="cfg-max-restructures" min="0" max="5" step="1" value="0" />
+        </label>
+        <label class="cfg-toggle">
+          <input type="checkbox" id="cfg-show-stream-log" checked />
+          Show live stream log
+        </label>
+        <label class="cfg-toggle">
+          <input type="checkbox" id="cfg-clear-before-run" checked />
+          Clear previous results before run
+        </label>
+        <label class="cfg-toggle">
+          <input type="checkbox" id="cfg-auto-switch-tab" checked />
+          Auto-switch to relevant result tab
+        </label>
+      </div>
+    </details>
   </div>
 
   <!-- Loading -->
@@ -518,7 +710,7 @@
     <!-- Normal RAG pane -->
     <div id="pane-rag" class="hidden">
       <div class="compare-banner">
-        ⚡ <strong>Normal RAG</strong> — documents are retrieved from your <strong>vector index (unstructured)</strong> and <strong>graph index (structured)</strong>, then sent to the LLM for a single-shot answer. No query decomposition or hallucination validation.
+        ⚡ <strong>Normal RAG</strong> — retrieve top-k passages from your <strong>vector index</strong>, then generate a single-shot answer with the LLM. No query decomposition, graph traversal, or validation loop.
       </div>
       <div class="answer-card" id="rag-answer-card"></div>
       <div class="section-heading" style="margin-top:20px">Retrieved Evidence</div>
@@ -529,6 +721,7 @@
     <div id="pane-treeqa">
       <div class="stats-bar" id="stats-bar"></div>
       <div class="answer-card" id="answer-card"></div>
+      <div class="routing-card hidden" id="tree-routing-card"></div>
       <div class="section-heading">Logic tree</div>
       <div id="tree-container"></div>
     </div>
@@ -575,7 +768,16 @@
 
 <script>
   /* ── state ──────────────────────────────────────────────────────────── */
-  const CLIENT_TIMEOUT_MS = 120_000;
+  const DEFAULT_RUN_CONFIG = {
+    timeoutSeconds: 120,
+    nodeRetries: 1,
+    treeRetries: 0,
+    maxRestructures: 0,
+    showStreamLog: true,
+    clearBeforeRun: true,
+    autoSwitchTab: true,
+  };
+  const _runConfig = { ...DEFAULT_RUN_CONFIG };
   let _ctrl    = null;   // AbortController
   let _timer   = null;   // auto-abort timer
   let _ticker  = null;   // elapsed second ticker
@@ -586,7 +788,7 @@
   let _charts   = {};    // live Chart.js instances keyed by canvas id
 
   const MODE_HINTS = {
-    rag: '<strong>⚡ Normal RAG:</strong> Retrieve relevant passages from your documents, then generate a direct answer with the LLM. Fast, single-hop, no decomposition.',
+    rag: '<strong>⚡ Normal RAG:</strong> Vector-only top-k retrieval from your document index, then a single LLM answer. Fast, single-hop, no decomposition.',
     treeqa: '<strong>🔀 HAMH-RAG:</strong> Decomposes the question into sub-queries, retrieves evidence for each, validates answers, and synthesises a grounded multi-hop response.',  
     compare: '<strong>⚖ Compare Both:</strong> Run Normal RAG and HAMH-RAG on the same question and see a side-by-side comparison of answers, confidence, and evidence.',
   };
@@ -604,6 +806,93 @@
   // init button label
   setMode('rag');
 
+  function clampNum(value, min, max) {
+    return Math.max(min, Math.min(max, value));
+  }
+
+  function timeoutMs() {
+    return _runConfig.timeoutSeconds * 1000;
+  }
+
+  function applyRunConfigFromUI(save = true) {
+    const timeoutInput = document.getElementById('cfg-timeout-seconds');
+    const nodeRetriesInput = document.getElementById('cfg-node-retries');
+    const treeRetriesInput = document.getElementById('cfg-tree-retries');
+    const restructuresInput = document.getElementById('cfg-max-restructures');
+    const showLogInput = document.getElementById('cfg-show-stream-log');
+    const clearInput = document.getElementById('cfg-clear-before-run');
+    const switchInput = document.getElementById('cfg-auto-switch-tab');
+    if (!timeoutInput || !nodeRetriesInput || !treeRetriesInput || !restructuresInput || !showLogInput || !clearInput || !switchInput) return;
+
+    const parsedTimeout = Number.parseInt(timeoutInput.value || '', 10);
+    _runConfig.timeoutSeconds = Number.isFinite(parsedTimeout)
+      ? clampNum(parsedTimeout, 15, 600)
+      : DEFAULT_RUN_CONFIG.timeoutSeconds;
+    timeoutInput.value = String(_runConfig.timeoutSeconds);
+    const parsedNodeRetries = Number.parseInt(nodeRetriesInput.value || '', 10);
+    _runConfig.nodeRetries = Number.isFinite(parsedNodeRetries)
+      ? clampNum(parsedNodeRetries, 0, 5)
+      : DEFAULT_RUN_CONFIG.nodeRetries;
+    nodeRetriesInput.value = String(_runConfig.nodeRetries);
+    const parsedTreeRetries = Number.parseInt(treeRetriesInput.value || '', 10);
+    _runConfig.treeRetries = Number.isFinite(parsedTreeRetries)
+      ? clampNum(parsedTreeRetries, 0, 5)
+      : DEFAULT_RUN_CONFIG.treeRetries;
+    treeRetriesInput.value = String(_runConfig.treeRetries);
+    const parsedRestructures = Number.parseInt(restructuresInput.value || '', 10);
+    _runConfig.maxRestructures = Number.isFinite(parsedRestructures)
+      ? clampNum(parsedRestructures, 0, 5)
+      : DEFAULT_RUN_CONFIG.maxRestructures;
+    restructuresInput.value = String(_runConfig.maxRestructures);
+    _runConfig.showStreamLog = !!showLogInput.checked;
+    _runConfig.clearBeforeRun = !!clearInput.checked;
+    _runConfig.autoSwitchTab = !!switchInput.checked;
+
+    const summary = document.getElementById('cfg-summary');
+    if (summary) {
+      summary.textContent = `${_runConfig.timeoutSeconds}s · retries ${_runConfig.nodeRetries}/${_runConfig.treeRetries} · restruct ${_runConfig.maxRestructures}`;
+    }
+    if (!_runConfig.showStreamLog) clearStreamLog();
+
+    if (save) {
+      try {
+        localStorage.setItem('treeqa_run_config', JSON.stringify(_runConfig));
+      } catch {}
+    }
+  }
+
+  function setupRunConfig() {
+    const timeoutInput = document.getElementById('cfg-timeout-seconds');
+    const nodeRetriesInput = document.getElementById('cfg-node-retries');
+    const treeRetriesInput = document.getElementById('cfg-tree-retries');
+    const restructuresInput = document.getElementById('cfg-max-restructures');
+    const showLogInput = document.getElementById('cfg-show-stream-log');
+    const clearInput = document.getElementById('cfg-clear-before-run');
+    const switchInput = document.getElementById('cfg-auto-switch-tab');
+    if (!timeoutInput || !nodeRetriesInput || !treeRetriesInput || !restructuresInput || !showLogInput || !clearInput || !switchInput) return;
+
+    try {
+      const raw = localStorage.getItem('treeqa_run_config');
+      if (raw) {
+        const saved = JSON.parse(raw);
+        if (saved && typeof saved === 'object') {
+          if (Number.isFinite(saved.timeoutSeconds)) timeoutInput.value = String(saved.timeoutSeconds);
+          if (Number.isFinite(saved.nodeRetries)) nodeRetriesInput.value = String(saved.nodeRetries);
+          if (Number.isFinite(saved.treeRetries)) treeRetriesInput.value = String(saved.treeRetries);
+          if (Number.isFinite(saved.maxRestructures)) restructuresInput.value = String(saved.maxRestructures);
+          if (typeof saved.showStreamLog === 'boolean') showLogInput.checked = saved.showStreamLog;
+          if (typeof saved.clearBeforeRun === 'boolean') clearInput.checked = saved.clearBeforeRun;
+          if (typeof saved.autoSwitchTab === 'boolean') switchInput.checked = saved.autoSwitchTab;
+        }
+      }
+    } catch {}
+
+    [timeoutInput, nodeRetriesInput, treeRetriesInput, restructuresInput, showLogInput, clearInput, switchInput].forEach(ctrl => {
+      ctrl.addEventListener('change', () => applyRunConfigFromUI(true));
+    });
+    applyRunConfigFromUI(false);
+  }
+
   /* ── run / cancel ───────────────────────────────────────────────────────────────── */
   function handleRun() {
     if (_mode === 'rag')     runRAG();
@@ -620,12 +909,14 @@
 
   async function _post(url, body) {
     _ctrl = new AbortController();
-    setLoading(true); setError(null); clearResults();
+    setLoading(true); setError(null);
+    if (_runConfig.clearBeforeRun) clearResults();
+    if (!_runConfig.showStreamLog) clearStreamLog();
 
     _timer = setTimeout(() => {
       _ctrl.abort(); setLoading(false);
-      setError('Request timed out after 2 minutes. Try a simpler query.');
-    }, CLIENT_TIMEOUT_MS);
+      setError(`Request timed out after ${_runConfig.timeoutSeconds}s. Try a simpler query.`);
+    }, timeoutMs());
 
     let secs = 0;
     _ticker = setInterval(() => {
@@ -664,6 +955,7 @@
   }
 
   function appendStreamLog(event) {
+    if (!_runConfig.showStreamLog) return;
     const el = document.getElementById('stream-log');
     if (!el) return;
     const msg = formatStreamEvent(event);
@@ -681,6 +973,8 @@
     if (e.event === 'tree_attempt') return `🌲 Tree attempt ${e.attempt}/${e.total_attempts}`;
     if (e.event === 'decomposed')   return `🔀 Decomposed into ${e.total} sub-question(s): ${e.nodes.join(' | ')}`;
     if (e.event === 'node_start')   return `⏳ [${e.node_id}]: ${e.question}`;
+    if (e.event === 'node_route')   return `🧭 [${e.node_id}] ${prettyRoute(e.route)} via ${(e.backends || []).join('+') || 'n/a'} · ${Math.round(e.latency_ms || 0)}ms`;
+    if (e.event === 'node_bridge')  return `🧩 [${e.node_id}] entity-bridge query added ${e.added || 0} doc(s)`;
     if (e.event === 'node_done')    return `${e.status === 'verified' ? '✅' : '⚠️'} [${e.node_id}] ${e.status}`;
     if (e.event === 'node_restructure') return `🔧 [${e.node_id}] restructuring: ${e.question}`;
     if (e.event === 'tree_retry')   return `🔁 Retry ${e.attempt}: refined → "${e.refined_query}"`;
@@ -690,13 +984,15 @@
 
   async function _stream(url, body, onEvent) {
     _ctrl = new AbortController();
-    clearStreamLog();
-    setLoading(true); setError(null); clearResults();
+    if (_runConfig.showStreamLog) clearStreamLog();
+    else clearStreamLog();
+    setLoading(true); setError(null);
+    if (_runConfig.clearBeforeRun) clearResults();
 
     _timer = setTimeout(() => {
       _ctrl.abort(); setLoading(false);
-      setError('Request timed out after 2 minutes. Try a simpler query.');
-    }, CLIENT_TIMEOUT_MS);
+      setError(`Request timed out after ${_runConfig.timeoutSeconds}s. Try a simpler query.`);
+    }, timeoutMs());
 
     let secs = 0;
     _ticker = setInterval(() => {
@@ -744,8 +1040,14 @@
   async function runQuery() {
     const query = document.getElementById('query-input').value.trim();
     if (!query) return;
-    await _stream('/api/run/stream', { query }, (event) => {
-      if      (event.event === 'result') { _tqaData = event.data; showResults(); switchTab('treeqa'); }
+    await _stream('/api/run/stream', {
+      query,
+      timeout_seconds: _runConfig.timeoutSeconds,
+      max_retries: _runConfig.nodeRetries,
+      tree_retries: _runConfig.treeRetries,
+      max_restructures: _runConfig.maxRestructures,
+    }, (event) => {
+      if      (event.event === 'result') { _tqaData = event.data; showResults(); if (_runConfig.autoSwitchTab) switchTab('treeqa'); }
       else if (event.event === 'error')  { setError(event.message); }
       else                               { appendStreamLog(event); }
     });
@@ -754,8 +1056,8 @@
   async function runRAG() {
     const query = document.getElementById('query-input').value.trim();
     if (!query) return;
-    await _stream('/api/run_rag/stream', { query }, (event) => {
-      if      (event.event === 'result') { _ragData = event.data; showResults(); switchTab('rag'); }
+    await _stream('/api/run_rag/stream', { query, timeout_seconds: _runConfig.timeoutSeconds }, (event) => {
+      if      (event.event === 'result') { _ragData = event.data; showResults(); if (_runConfig.autoSwitchTab) switchTab('rag'); }
       else if (event.event === 'error')  { setError(event.message); }
       else                               { appendStreamLog(event); }
     });
@@ -764,10 +1066,17 @@
   async function runCompare() {
     const query = document.getElementById('query-input').value.trim();
     if (!query) return;
-    const data = await _post('/api/compare', { query });
+    const data = await _post('/api/compare', {
+      query,
+      timeout_seconds: _runConfig.timeoutSeconds,
+      max_retries: _runConfig.nodeRetries,
+      tree_retries: _runConfig.treeRetries,
+      max_restructures: _runConfig.maxRestructures,
+    });
     if (!data) return;
     _tqaData = data.treeqa; _tradData = data.traditional;
-    showResults(); switchTab('compare');
+    showResults();
+    if (_runConfig.autoSwitchTab) switchTab('compare');
   }
 
   /* ── tabs ───────────────────────────────────────────────────────────── */
@@ -805,6 +1114,7 @@
     const nodes    = flattenNodes(data.root);
     const verified = nodes.filter(n => n.status === 'verified').length;
     const review   = nodes.filter(n => n.status === 'needs_review').length;
+    const routed   = nodes.filter(n => n.retrieval_route).length;
     const confs    = nodes.filter(n => n.validation).map(n => n.validation.confidence);
     const avgConf  = confs.length ? confs.reduce((a, b) => a + b, 0) / confs.length : 0;
     const avgPct   = clampPct(Math.round(avgConf * 100));
@@ -813,10 +1123,12 @@
       stat(nodes.length,  'Nodes') +
       stat(verified,      'Verified', '#16a34a') +
       stat(review,        'Review',   '#d97706') +
+      stat(routed,        'Routed',   '#0f766e') +
       stat(avgPct + '%', 'Avg Conf', '#6366f1');
 
     document.getElementById('answer-card').innerHTML =
       `<h2>✓ Final answer</h2><p>${esc(data.final_answer)}</p>`;
+    renderTreeRoutingCard(nodes.filter(n => n.retrieval_route));
 
     const container = document.getElementById('tree-container');
     container.innerHTML = '';
@@ -868,13 +1180,17 @@
     const tqaPct  = clampPct(Math.round(tqaAvgConf * 100));
     const tradCls = trad.confidence >= .7 ? 'high' : trad.confidence >= .4 ? 'medium' : 'low';
     const tqaCls  = tqaAvgConf  >= .7 ? 'high' : tqaAvgConf  >= .4 ? 'medium' : 'low';
+    const treeRoute = dominantRoute(tqaNodes.filter(n => n.retrieval_route));
+    const treeRouteHtml = treeRoute
+      ? `<span class="compare-chip">Route mix: ${esc(prettyRoute(treeRoute))}</span>`
+      : '';
 
     document.getElementById('col-traditional').innerHTML = `
       <div class="compare-col-title">⚡ Traditional RAG</div>
       <div class="compare-meta">
         <span class="compare-chip ${trad.passed ? 'pass' : 'fail'}">${trad.passed ? '✓ Grounded' : '✗ Unverified'}</span>
         <span class="compare-chip">${trad.doc_count} docs</span>
-        <span class="compare-chip">1 hop · no decomposition</span>
+        <span class="compare-chip">1 hop · vector-only</span>
       </div>
       <div class="conf-bar-wrap">
         <div class="conf-bar-track"><div class="conf-bar-fill ${tradCls}" style="width:${tradPct}%"></div></div>
@@ -890,6 +1206,7 @@
         <span class="compare-chip ${tqa.root.status === 'verified' ? 'pass' : 'fail'}">${tqa.root.status === 'verified' ? '✓ Verified' : '⚠ Needs Review'}</span>
         <span class="compare-chip">${tqaDocs} docs · ${tqaNodes.length} nodes</span>
         <span class="compare-chip">${tqaVerified}/${tqaNodes.length} verified</span>
+        ${treeRouteHtml}
       </div>
       <div class="conf-bar-wrap">
         <div class="conf-bar-track"><div class="conf-bar-fill ${tqaCls}" style="width:${tqaPct}%"></div></div>
@@ -1120,6 +1437,83 @@
     return [node, ...(node.children || []).flatMap(flattenNodes)];
   }
 
+  function prettyRoute(route) {
+    if (!route) return 'n/a';
+    return String(route).replace(/_/g, ' ');
+  }
+
+  function dominantRoute(nodes) {
+    const counts = {};
+    nodes.forEach(node => {
+      const route = node.retrieval_route;
+      if (!route) return;
+      counts[route] = (counts[route] || 0) + 1;
+    });
+    const top = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
+    return top ? top[0] : '';
+  }
+
+  function routeChip(route) {
+    if (!route) return '<span class="route-chip">n/a</span>';
+    return `<span class="route-chip ${esc(route)}">${esc(prettyRoute(route))}</span>`;
+  }
+
+  function renderTreeRoutingCard(routedNodes) {
+    const card = document.getElementById('tree-routing-card');
+    if (!card) return;
+    if (!routedNodes || !routedNodes.length) {
+      card.classList.add('hidden');
+      card.innerHTML = '';
+      return;
+    }
+    const routeCounts = {};
+    const backendCounts = {};
+    let totalLatency = 0;
+    let fallbackCount = 0;
+    routedNodes.forEach(node => {
+      routeCounts[node.retrieval_route] = (routeCounts[node.retrieval_route] || 0) + 1;
+      (node.retrieval_backends || []).forEach(backend => {
+        backendCounts[backend] = (backendCounts[backend] || 0) + 1;
+      });
+      totalLatency += Number(node.retrieval_latency_ms || 0);
+      if (node.retrieval_fallback) fallbackCount += 1;
+    });
+    const dominant = Object.entries(routeCounts).sort((a, b) => b[1] - a[1])[0];
+    const backendMix = Object.entries(backendCounts)
+      .map(([k, v]) => `${k}:${v}`)
+      .join(' · ') || 'n/a';
+    const avgLatency = routedNodes.length ? Math.round(totalLatency / routedNodes.length) : 0;
+    card.innerHTML = `
+      <div class="routing-head">
+        <div class="routing-title">Routing Insights (HAMH-RAG)</div>
+        ${dominant ? routeChip(dominant[0]) : routeChip('')}
+      </div>
+      <div class="routing-grid">
+        <div class="routing-metric">
+          <div class="routing-metric-label">Routed Nodes</div>
+          <div class="routing-metric-value">${routedNodes.length}</div>
+        </div>
+        <div class="routing-metric">
+          <div class="routing-metric-label">Avg Retrieval Latency</div>
+          <div class="routing-metric-value">${avgLatency} ms</div>
+        </div>
+        <div class="routing-metric">
+          <div class="routing-metric-label">Backend Mix</div>
+          <div class="routing-metric-value">${esc(backendMix)}</div>
+        </div>
+        <div class="routing-metric">
+          <div class="routing-metric-label">Fallbacks</div>
+          <div class="routing-metric-value">${fallbackCount}</div>
+        </div>
+      </div>
+      <div class="route-reason">
+        Dominant route <strong>${esc(prettyRoute(dominant ? dominant[0] : 'n/a'))}</strong>
+        applied to ${dominant ? dominant[1] : 0} node(s).
+      </div>
+    `;
+    card.classList.remove('hidden');
+  }
+
   /* ── tree renderer ──────────────────────────────────────────────────── */
   function renderNode(node) {
     const status    = node.status || 'pending';
@@ -1139,6 +1533,12 @@
       <span class="badge ${status}">${esc(badge)}</span>
       <span class="attempts-tag">attempt ${node.attempts || 0}</span>
     `;
+    if (node.retrieval_route) {
+      meta.innerHTML += `<span class="badge route">${esc(prettyRoute(node.retrieval_route))}</span>`;
+    }
+    if (node.retrieval_latency_ms) {
+      meta.innerHTML += `<span class="attempts-tag">${Math.round(node.retrieval_latency_ms)}ms retrieval</span>`;
+    }
     if (node.was_restructured) {
       meta.innerHTML += `<span class="badge restructured">restructured</span>`;
     }
@@ -1438,6 +1838,7 @@
   }
 
   /* ── init ───────────────────────────────────────────────────────────── */
+  setupRunConfig();
   loadDocuments();
   loadDatasets();
   loadBenchmarkQA();

@@ -13,8 +13,9 @@ from treeqa.agents import (
 )
 from treeqa.backends import build_graph_backend, build_llm_client, build_vector_backend
 from treeqa.config import TreeQASettings
-from treeqa.models import PipelineResult, QueryNode, ValidationResult
+from treeqa.models import PipelineResult, QueryNode, RetrievedDocument, ValidationResult
 from treeqa.retrieval import HybridRetriever
+from treeqa.retrieval.scoring import rank_documents
 from treeqa.state import WorkflowState
 
 # Callable[[str, **Any], None] — pipeline events are keyword-only
@@ -58,6 +59,9 @@ class TreeQAPipeline:
         query: str,
         progress_callback: ProgressCallback | None = None,
         max_seconds: float | None = None,
+        max_retries_override: int | None = None,
+        tree_retries_override: int | None = None,
+        max_restructures_override: int | None = None,
     ) -> PipelineResult:
         """Run HAMH-RAG on *query*, optionally streaming progress events via *progress_callback*.
 
@@ -77,17 +81,32 @@ class TreeQAPipeline:
 
         active_query = query
         result: PipelineResult | None = None
+        max_retries = (
+            self.settings.max_retries
+            if max_retries_override is None
+            else max(0, max_retries_override)
+        )
+        tree_retries = (
+            self.settings.tree_retries
+            if tree_retries_override is None
+            else max(0, tree_retries_override)
+        )
+        max_restructures = (
+            self.settings.max_restructures
+            if max_restructures_override is None
+            else max(0, max_restructures_override)
+        )
 
         deadline = time.monotonic() + max_seconds if max_seconds else None
 
-        for tree_attempt in range(self.settings.tree_retries + 1):
+        for tree_attempt in range(tree_retries + 1):
             if tree_attempt > 0:
                 # Refine the root query and rebuild the decomposition tree
                 active_query = self.corrector.refine(active_query, tree_attempt)
                 _cb(event="tree_retry", attempt=tree_attempt, refined_query=active_query)
 
             _cb(event="tree_attempt", attempt=tree_attempt + 1,
-                total_attempts=self.settings.tree_retries + 1)
+                total_attempts=tree_retries + 1)
 
             root = self.decomposer.decompose(active_query)
             # Carry over verified answers from the previous attempt so we
@@ -112,6 +131,8 @@ class TreeQAPipeline:
                 progress_callback=_cb,
                 verified_cache=prev_answers,
                 deadline=deadline,
+                max_retries=max_retries,
+                max_restructures=max_restructures,
             )
             state.nodes = self._flatten_leaves(state.root)
             verified_nodes = [n for n in state.nodes if n.status == "verified"]
@@ -146,6 +167,8 @@ class TreeQAPipeline:
         verified_cache: dict[tuple[str, str], str] | None = None,
         restructure_depth: int = 0,
         deadline: float | None = None,
+        max_retries: int | None = None,
+        max_restructures: int | None = None,
     ) -> None:
         _cb: ProgressCallback = progress_callback or _noop
         if prior_hops is None:
@@ -190,25 +213,36 @@ class TreeQAPipeline:
                             verified_cache, 
                             restructure_depth,
                             deadline,
+                            max_retries,
+                            max_restructures,
                         ): child for child in node.children
                     }
                     concurrent.futures.wait(futures)
             else:
                 # Sequential resolution for dependent hops
                 accumulated: list[tuple[str, str]] = list(prior_hops)
+                propagate_sibling_context = any(
+                    "[DEP:" in child.question for child in node.children
+                ) or any(
+                    self._question_uses_anaphora(child.question)
+                    for child in node.children[1:]
+                )
                 for child in node.children:
                     if deadline is not None and time.monotonic() > deadline:
                         self._mark_timeout(node)
                         return
+                    hop_input = accumulated if propagate_sibling_context else list(prior_hops)
                     self._resolve_tree(
                         child, 
-                        accumulated, 
+                        hop_input, 
                         _cb, 
                         verified_cache, 
                         restructure_depth,
                         deadline,
+                        max_retries,
+                        max_restructures,
                     )
-                    if child.status == "verified" and child.answer:
+                    if propagate_sibling_context and child.status == "verified" and child.answer:
                         accumulated.append((child.question, self._strip_sources(child.answer)))
             
             verified_children = [child for child in node.children if child.status == "verified"]
@@ -242,7 +276,10 @@ class TreeQAPipeline:
             prior_hops, 
             progress_callback=_cb, 
             verified_cache=verified_cache,
-            restructure_depth=restructure_depth
+            restructure_depth=restructure_depth,
+            deadline=deadline,
+            max_retries=max_retries,
+            max_restructures=max_restructures,
         )
 
     def _resolve_leaf(
@@ -253,6 +290,8 @@ class TreeQAPipeline:
         verified_cache: dict[tuple[str, str], str] | None = None,
         restructure_depth: int = 0,
         deadline: float | None = None,
+        max_retries: int | None = None,
+        max_restructures: int | None = None,
     ) -> None:
         _cb: ProgressCallback = progress_callback or _noop
         prior_hops = prior_hops or []
@@ -265,13 +304,74 @@ class TreeQAPipeline:
             return
 
         _cb(event="node_start", node_id=node.node_id, question=base_question)
+        retry_cap = self.settings.max_retries if max_retries is None else max(0, max_retries)
+        restructure_cap = (
+            self.settings.max_restructures
+            if max_restructures is None
+            else max(0, max_restructures)
+        )
+        skip_restructure = False
 
-        for attempt in range(self.settings.max_retries + 1):
+        for attempt in range(retry_cap + 1):
             if deadline is not None and time.monotonic() > deadline:
                 self._mark_timeout(node)
                 return
             node.attempts = attempt + 1
-            node.documents = self.retriever.retrieve(retrieval_question)
+            retrieval_trace = None
+            retrieve_with_trace = getattr(self.retriever, "retrieve_with_trace", None)
+            has_native_trace = callable(retrieve_with_trace) and hasattr(type(self.retriever), "retrieve_with_trace")
+            if has_native_trace:
+                node.documents, retrieval_trace = retrieve_with_trace(retrieval_question)
+            else:
+                node.documents = self.retriever.retrieve(retrieval_question)
+            if not node.documents:
+                node.answer = f"Insufficient evidence to answer: {base_question}"
+                node.validation = ValidationResult(
+                    passed=False,
+                    confidence=0.0,
+                    rationale="No evidence found for this sub-question.",
+                )
+                node.status = "needs_review"
+                skip_restructure = True
+                break
+            if retrieval_trace is not None:
+                node.retrieval_route = retrieval_trace.route
+                node.retrieval_reason = retrieval_trace.reason
+                node.retrieval_backends = list(retrieval_trace.backends_used)
+                node.retrieval_latency_ms = retrieval_trace.total_latency_ms
+                node.retrieval_fallback = retrieval_trace.fallback_used
+                node.retrieval_signals = dict(retrieval_trace.signals)
+                _cb(
+                    event="node_route",
+                    node_id=node.node_id,
+                    route=node.retrieval_route,
+                    reason=node.retrieval_reason,
+                    backends=node.retrieval_backends,
+                    fallback=node.retrieval_fallback,
+                    latency_ms=round(node.retrieval_latency_ms, 2),
+                )
+            bridge_query, bridge_docs = self._bridge_director_country_evidence(
+                base_question, node.documents
+            )
+            if bridge_docs:
+                merge_limit = max(
+                    4,
+                    self.settings.retrieval_top_k + 1,
+                    int(getattr(self.retriever, "top_k", self.settings.retrieval_top_k)),
+                )
+                node.documents = rank_documents(
+                    base_question,
+                    [*node.documents, *bridge_docs],
+                    merge_limit,
+                )
+                if "vector_entity_bridge" not in node.retrieval_backends:
+                    node.retrieval_backends.append("vector_entity_bridge")
+                _cb(
+                    event="node_bridge",
+                    node_id=node.node_id,
+                    query=bridge_query,
+                    added=len(bridge_docs),
+                )
             node.answer = self.generator.generate_for_node(
                 base_question, node.documents, prior_hops=prior_hops
             )
@@ -282,20 +382,47 @@ class TreeQAPipeline:
                 if verified_cache is not None:
                     verified_cache[self._cache_key(base_question, prior_hops)] = node.answer
                 break
+
+            rationale = (node.validation.rationale if node.validation else "").lower()
+            low_signal_failure = (
+                (node.validation is not None and node.validation.confidence <= 0.15)
+                and (
+                    "insufficient evidence" in rationale
+                    or "no evidence" in rationale
+                    or "validation error" in rationale
+                    or "judge failure" in rationale
+                )
+            )
+            if low_signal_failure and attempt >= 1:
+                skip_restructure = True
+                break
             
             # Optimization: If category mismatch is the reason for failure, 
             # don't bother retrying the same question - jump to restructuring.
-            if "[Category Mismatch]" in node.validation.rationale:
+            if "[category mismatch]" in rationale:
                 break
                 
-            retrieval_question = self.corrector.refine(retrieval_question, node.attempts)
+            refined = self.corrector.refine(retrieval_question, node.attempts)
+            retrieval_question = self._safe_refine_query(retrieval_question, refined)
 
         # ART-R Restructuring Loop
-        if (
-            not node.validation.passed 
-            and restructure_depth < self.settings.max_restructures
+        can_restructure = (
+            not skip_restructure
+            and node.validation is not None
+            and not node.validation.passed
+            and restructure_depth < restructure_cap
             and self.restructurer is not None
-        ):
+        )
+        if can_restructure and deadline is not None:
+            remaining = deadline - time.monotonic()
+            if remaining <= max(5.0, self.settings.llm_timeout_seconds + 2):
+                can_restructure = False
+                if node.validation is not None:
+                    node.validation.rationale = (
+                        f"{node.validation.rationale} (Skipped restructure: low time budget.)"
+                    )
+
+        if can_restructure:
             _cb(event="node_restructure", node_id=node.node_id, question=base_question)
             new_sub_nodes = self.restructurer.restructure(node, node.validation.rationale)
             if new_sub_nodes:
@@ -310,6 +437,8 @@ class TreeQAPipeline:
                     verified_cache=verified_cache,
                     restructure_depth=restructure_depth + 1,
                     deadline=deadline,
+                    max_retries=retry_cap,
+                    max_restructures=restructure_cap,
                 )
                 return
 
@@ -321,7 +450,141 @@ class TreeQAPipeline:
             question=base_question,
             status=node.status,
             answer=self._strip_sources(node.answer),
-            attempts=node.attempts)
+            attempts=node.attempts,
+            route=node.retrieval_route,
+            backends=node.retrieval_backends,
+            latency_ms=round(node.retrieval_latency_ms, 2))
+
+    # ------------------------------------------------------------------
+    # Retrieval helpers
+    # ------------------------------------------------------------------
+
+    def _bridge_director_country_evidence(
+        self, question: str, documents: list[RetrievedDocument]
+    ) -> tuple[str | None, list[RetrievedDocument]]:
+        """CRAG-style corrective action for director-country sub-questions.
+
+        If a question asks for a director's country/nationality and evidence includes
+        "directed by <Name>", run a focused vector query for that person. This
+        reduces false `needs_review` caused by retrieving only film pages.
+        """
+        if not self._is_director_country_question(question):
+            return None, []
+        director_names = self._extract_director_names(documents)
+        if not director_names:
+            return None, []
+        vector_backend = getattr(self.retriever, "vector_backend", None)
+        if vector_backend is None or not hasattr(vector_backend, "search"):
+            return None, []
+
+        limit = max(
+            2,
+            min(6, int(getattr(self.retriever, "top_k", self.settings.retrieval_top_k)) + 1),
+        )
+        wants_nationality = "nationality" in question.lower()
+
+        merged: list[RetrievedDocument] = []
+        used_query: str | None = None
+        for name in director_names[:2]:
+            bridge_query = (
+                f"What is the nationality of {name}?"
+                if wants_nationality
+                else f"What country is {name} from?"
+            )
+            used_query = bridge_query
+            try:
+                merged.extend(vector_backend.search(bridge_query, limit))
+            except Exception:
+                continue
+        return used_query, merged
+
+    @staticmethod
+    def _is_director_country_question(question: str) -> bool:
+        lowered = question.lower()
+        return "director" in lowered and (
+            "country" in lowered or "nationality" in lowered
+        )
+
+    @staticmethod
+    def _extract_director_names(documents: list[RetrievedDocument]) -> list[str]:
+        names: list[str] = []
+        seen: set[str] = set()
+        patterns = [
+            r"directed by ([A-Z][A-Za-z'.-]+(?:\s+[A-Z][A-Za-z'.-]+){1,3})",
+            r"([A-Z][A-Za-z'.-]+(?:\s+[A-Z][A-Za-z'.-]+){1,3})\s*\([^)]*\)\s+was\s+a\s+[A-Za-z-]+\s+film director",
+        ]
+        for document in documents:
+            text = document.content
+            for pattern in patterns:
+                for match in re.findall(pattern, text):
+                    candidate = re.sub(r"\s+", " ", match).strip(" .,:;")
+                    if len(candidate.split()) < 2:
+                        continue
+                    lowered = candidate.lower()
+                    if lowered in seen:
+                        continue
+                    seen.add(lowered)
+                    names.append(candidate)
+        return names
+
+    def _safe_refine_query(self, previous: str, candidate: str) -> str:
+        """Keep retries from drifting into generic 'RAG internals' phrasing."""
+        candidate = (candidate or "").strip()
+        if not candidate:
+            return previous
+        prev_entities = self._extract_query_entities(previous)
+        if not prev_entities:
+            return candidate
+        cand_lower = candidate.lower()
+        if any(entity in cand_lower for entity in prev_entities):
+            return candidate
+        return previous
+
+    @staticmethod
+    def _extract_query_entities(question: str) -> set[str]:
+        matches = re.findall(r"\b[A-Z][A-Za-z0-9'-]{2,}\b", question)
+        stop = {
+            "What",
+            "Who",
+            "Where",
+            "When",
+            "Which",
+            "How",
+            "Do",
+            "Does",
+            "Did",
+            "Is",
+            "Are",
+            "Was",
+            "Were",
+            "The",
+            "And",
+            "Or",
+        }
+        return {match.lower() for match in matches if match not in stop}
+
+    @staticmethod
+    def _question_uses_anaphora(question: str) -> bool:
+        lowered = question.lower()
+        if lowered.startswith(("how ", "why ", "then ", "after ")):
+            return True
+        markers = (
+            " it ",
+            " its ",
+            " they ",
+            " their ",
+            " that ",
+            " those ",
+            " this ",
+            " these ",
+            " former ",
+            " latter ",
+            " previous ",
+            " above ",
+            " same as ",
+        )
+        padded = f" {lowered} "
+        return any(marker in padded for marker in markers)
 
     # ------------------------------------------------------------------
     # Static utilities

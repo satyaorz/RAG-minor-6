@@ -135,8 +135,20 @@ def run_benchmark(
 
         rag_row: dict[str, Any] = {}
         if include_rag:
-            rag_docs = pipeline.retriever.retrieve(question)
-            rag_raw = pipeline.generator.generate_for_node(question, rag_docs)
+            top_k = max(1, int(getattr(pipeline.retriever, "top_k", pipeline.settings.retrieval_top_k)))
+            vector_backend = getattr(pipeline.retriever, "vector_backend", None)
+            if vector_backend is not None and hasattr(vector_backend, "search"):
+                try:
+                    rag_docs = vector_backend.search(question, top_k)
+                except Exception:
+                    rag_docs = []
+            else:
+                rag_docs = []
+            try:
+                rag_raw_obj = pipeline.generator.generate_for_node(question, rag_docs)
+                rag_raw = rag_raw_obj if isinstance(rag_raw_obj, str) else str(rag_raw_obj)
+            except Exception as exc:
+                rag_raw = f"[ERROR: {exc}]"
             rag_pred = _strip_sources(rag_raw)
             rag_em = _exact_match(gold, rag_pred)
             rag_f1 = _token_f1(gold, rag_pred)

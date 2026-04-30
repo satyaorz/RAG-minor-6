@@ -23,5 +23,13 @@ class CorrectionEngine:
                     return rewrite.strip()
             except Exception:
                 pass
-        suffix = " Focus on factual support and named entities."
-        return f"{question.strip('? ')}?{suffix} Retry {attempt}."
+        cleaned = question.strip()
+        if not cleaned:
+            return question
+        if not cleaned.endswith("?"):
+            cleaned = f"{cleaned}?"
+        lowered = cleaned.lower()
+        if "director" in lowered and ("country" in lowered or "nationality" in lowered):
+            # Keep retries entity-focused instead of drifting toward framework terms.
+            return f"{cleaned} director nationality country of origin"
+        return cleaned

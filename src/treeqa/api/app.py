@@ -91,8 +91,23 @@ def _ensure_pipeline() -> TreeQAPipeline:
     return _pipeline
 
 
+def _resolve_timeout_seconds(requested: int | None) -> float:
+    if requested is None:
+        return _PIPELINE_TIMEOUT
+    return float(max(15, min(requested, 900)))
+
+
+def _pipeline_budget(timeout_seconds: float) -> float:
+    # Reserve a tiny envelope for transport/serialization around pipeline execution.
+    return max(5.0, timeout_seconds - 2.0)
+
+
 class RunRequest(BaseModel):
     query: str
+    timeout_seconds: int | None = None
+    max_retries: int | None = None
+    tree_retries: int | None = None
+    max_restructures: int | None = None
 
     @field_validator("query")
     @classmethod
@@ -101,6 +116,20 @@ class RunRequest(BaseModel):
         if not cleaned:
             raise ValueError("query must not be empty")
         return cleaned
+
+    @field_validator("timeout_seconds")
+    @classmethod
+    def timeout_seconds_must_be_reasonable(cls, value: int | None) -> int | None:
+        if value is None:
+            return None
+        return max(15, min(value, 900))
+
+    @field_validator("max_retries", "tree_retries", "max_restructures")
+    @classmethod
+    def retry_fields_must_be_reasonable(cls, value: int | None) -> int | None:
+        if value is None:
+            return None
+        return max(0, min(value, 5))
 
 
 class LoadDatasetRequest(BaseModel):
@@ -233,19 +262,28 @@ async def upload_documents(files: list[UploadFile] = File(...)) -> JSONResponse:
 async def run_query(body: RunRequest) -> JSONResponse:
     pipeline = _ensure_pipeline()
     loop = asyncio.get_event_loop()
+    request_timeout = _resolve_timeout_seconds(body.timeout_seconds)
+    pipeline_timeout = _pipeline_budget(request_timeout)
     try:
         result = await asyncio.wait_for(
             loop.run_in_executor(
                 _executor,
-                partial(pipeline.run, body.query, max_seconds=_PIPELINE_TIMEOUT - 2),
+                partial(
+                    pipeline.run,
+                    body.query,
+                    max_seconds=pipeline_timeout,
+                    max_retries_override=body.max_retries,
+                    tree_retries_override=body.tree_retries,
+                    max_restructures_override=body.max_restructures,
+                ),
             ),
-            timeout=_PIPELINE_TIMEOUT,
+            timeout=request_timeout,
         )
         return JSONResponse(content=asdict(result))
     except asyncio.TimeoutError:
         raise HTTPException(
             status_code=504,
-            detail=f"Pipeline timed out after {int(_PIPELINE_TIMEOUT)}s. Try a simpler query.",
+            detail=f"Pipeline timed out after {int(request_timeout)}s. Try a simpler query.",
         )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
@@ -260,6 +298,7 @@ async def run_query_stream(body: RunRequest) -> StreamingResponse:
         tree_attempt — tree-level attempt N / total
         decomposed   — sub-questions list
         node_start   — a leaf node is being resolved
+        node_route   — retrieval route chosen for a node
         node_done    — leaf resolved (status, answer, attempts)
         node_restructure — a leaf node is being restructured
         tree_retry   — whole-tree retry after needs_review
@@ -268,6 +307,9 @@ async def run_query_stream(body: RunRequest) -> StreamingResponse:
     """
     import json as _json
     import queue as _q
+
+    request_timeout = _resolve_timeout_seconds(body.timeout_seconds)
+    pipeline_timeout = _pipeline_budget(request_timeout)
 
     q: _q.Queue = _q.Queue()
     _SENTINEL = object()
@@ -281,7 +323,10 @@ async def run_query_stream(body: RunRequest) -> StreamingResponse:
             result = pipeline.run(
                 body.query,
                 progress_callback=_callback,
-                max_seconds=_PIPELINE_TIMEOUT - 2,
+                max_seconds=pipeline_timeout,
+                max_retries_override=body.max_retries,
+                tree_retries_override=body.tree_retries,
+                max_restructures_override=body.max_restructures,
             )
             q.put({"event": "result", "data": asdict(result)})
         except Exception as exc:
@@ -294,10 +339,10 @@ async def run_query_stream(body: RunRequest) -> StreamingResponse:
 
     async def _generate():
         import time as _time
-        deadline = _time.monotonic() + _PIPELINE_TIMEOUT
+        deadline = _time.monotonic() + request_timeout
         while True:
             if _time.monotonic() > deadline:
-                yield f"data: {_json.dumps({'event': 'error', 'message': f'Pipeline timed out after {int(_PIPELINE_TIMEOUT)}s. Try a simpler query.'}, default=str)}\n\n"
+                yield f"data: {_json.dumps({'event': 'error', 'message': f'Pipeline timed out after {int(request_timeout)}s. Try a simpler query.'}, default=str)}\n\n"
                 break
             try:
                 item = q.get_nowait()
@@ -317,9 +362,18 @@ async def run_query_stream(body: RunRequest) -> StreamingResponse:
 
 
 def _run_traditional_sync(query: str) -> dict:
-    """Normal RAG: single-hop retrieve + LLM generation, no decomposition or validation."""
+    """Normal RAG baseline: vector-only top-k retrieval + LLM generation."""
     pipeline = _ensure_pipeline()
-    docs = pipeline.retriever.retrieve(query)
+    top_k = max(1, int(getattr(pipeline.retriever, "top_k", pipeline.settings.retrieval_top_k)))
+    vector_backend = getattr(pipeline.retriever, "vector_backend", None)
+    if vector_backend is None or not hasattr(vector_backend, "search"):
+        docs = []
+    else:
+        try:
+            docs = vector_backend.search(query, top_k)
+        except Exception as exc:
+            _log.warning("Normal RAG vector search failed: %s", exc)
+            docs = []
     if docs:
         top_score = round(docs[0].score, 4)
         answer = pipeline.generator.generate_for_node(query, docs)
@@ -331,7 +385,7 @@ def _run_traditional_sync(query: str) -> dict:
         "answer": answer,
         "confidence": top_score,
         "passed": top_score >= 0.5,
-        "rationale": f"Single-hop retrieval + LLM generation over top {len(docs)} document(s). No query decomposition or hallucination validation.",
+        "rationale": f"Single-hop vector retrieval + LLM generation over top {len(docs)} document(s). No decomposition, graph lookup, or validation loop.",
         "doc_count": len(docs),
         "documents": [asdict(d) for d in docs],
     }
@@ -341,14 +395,15 @@ def _run_traditional_sync(query: str) -> dict:
 async def run_rag(body: RunRequest) -> JSONResponse:
     """Normal RAG: single-hop retrieve + LLM generate. No decomposition."""
     loop = asyncio.get_event_loop()
+    request_timeout = _resolve_timeout_seconds(body.timeout_seconds)
     try:
         result = await asyncio.wait_for(
             loop.run_in_executor(_executor, _run_traditional_sync, body.query),
-            timeout=_PIPELINE_TIMEOUT,
+            timeout=request_timeout,
         )
         return JSONResponse(content=result)
     except asyncio.TimeoutError:
-        raise HTTPException(status_code=504, detail="RAG timed out.")
+        raise HTTPException(status_code=504, detail=f"RAG timed out after {int(request_timeout)}s.")
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
@@ -358,6 +413,8 @@ async def run_rag_stream(body: RunRequest) -> StreamingResponse:
     """Normal RAG with SSE stream — emits start → result events."""
     import json as _json
     import queue as _q
+
+    request_timeout = _resolve_timeout_seconds(body.timeout_seconds)
 
     q: _q.Queue = _q.Queue()
     _SENTINEL = object()
@@ -377,10 +434,10 @@ async def run_rag_stream(body: RunRequest) -> StreamingResponse:
 
     async def _generate():
         import time as _time
-        deadline = _time.monotonic() + _PIPELINE_TIMEOUT
+        deadline = _time.monotonic() + request_timeout
         while True:
             if _time.monotonic() > deadline:
-                yield f"data: {_json.dumps({'event': 'error', 'message': f'RAG timed out after {int(_PIPELINE_TIMEOUT)}s.'}, default=str)}\n\n"
+                yield f"data: {_json.dumps({'event': 'error', 'message': f'RAG timed out after {int(request_timeout)}s.'}, default=str)}\n\n"
                 break
             try:
                 item = q.get_nowait()
@@ -401,22 +458,34 @@ async def run_rag_stream(body: RunRequest) -> StreamingResponse:
 
 @app.post("/api/compare")
 async def compare_query(body: RunRequest) -> JSONResponse:
-    """Run traditional RAG then TreeQA; return side-by-side."""
+    """Run traditional RAG and TreeQA concurrently; return side-by-side."""
     loop = asyncio.get_event_loop()
+    request_timeout = _resolve_timeout_seconds(body.timeout_seconds)
+    pipeline_timeout = _pipeline_budget(request_timeout)
     try:
-        # Traditional RAG: single-hop retrieve + LLM generation
-        trad = await loop.run_in_executor(_executor, _run_traditional_sync, body.query)
-        # TreeQA: full multi-hop pipeline with LLM calls — may take up to PIPELINE_TIMEOUT
-        tqa = await asyncio.wait_for(
-            loop.run_in_executor(
-                _executor,
-                partial(_ensure_pipeline().run, body.query, max_seconds=_PIPELINE_TIMEOUT - 2),
+        pipeline = _ensure_pipeline()
+        trad_future = loop.run_in_executor(_executor, _run_traditional_sync, body.query)
+        tqa_future = loop.run_in_executor(
+            _executor,
+            partial(
+                pipeline.run,
+                body.query,
+                max_seconds=pipeline_timeout,
+                max_retries_override=body.max_retries,
+                tree_retries_override=body.tree_retries,
+                max_restructures_override=body.max_restructures,
             ),
-            timeout=_PIPELINE_TIMEOUT,
+        )
+        trad, tqa = await asyncio.wait_for(
+            asyncio.gather(trad_future, tqa_future),
+            timeout=request_timeout,
         )
         return JSONResponse(content={"traditional": trad, "treeqa": asdict(tqa)})
     except asyncio.TimeoutError:
-        raise HTTPException(status_code=504, detail="TreeQA pipeline timed out. Try a simpler query.")
+        raise HTTPException(
+            status_code=504,
+            detail=f"TreeQA pipeline timed out after {int(request_timeout)}s. Try a simpler query.",
+        )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
@@ -510,4 +579,3 @@ async def load_dataset_endpoint(body: LoadDatasetRequest) -> JSONResponse:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
-
