@@ -1,6 +1,6 @@
 # Diagram 1: Query Flow After Optimization
 
-## TreeQA Route Optimization: Query Flow After Optimization
+## HAMH-RAG Route Optimization: Query Flow After Optimization
 
 Shows how queries are routed through the intelligent routing system with fallback prediction.
 

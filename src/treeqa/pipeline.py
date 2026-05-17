@@ -7,6 +7,7 @@ from typing import Callable
 from treeqa.agents import (
     AnswerGenerator,
     AnswerValidator,
+    ConflictAuditor,
     CorrectionEngine,
     QueryDecomposer,
     TreeRestructurer,
@@ -36,6 +37,7 @@ class TreeQAPipeline:
         corrector: CorrectionEngine | None = None,
         generator: AnswerGenerator | None = None,
         restructurer: TreeRestructurer | None = None,
+        conflict_auditor: ConflictAuditor | None = None,
     ) -> None:
         self.settings = settings or TreeQASettings.from_env()
         llm_client = build_llm_client(self.settings)
@@ -49,6 +51,7 @@ class TreeQAPipeline:
         self.corrector = corrector or CorrectionEngine(llm_client=llm_client)
         self.generator = generator or AnswerGenerator(llm_client=llm_client)
         self.restructurer = restructurer or TreeRestructurer(llm_client=llm_client)
+        self.conflict_auditor = conflict_auditor or ConflictAuditor(llm_client=llm_client)
 
     # ------------------------------------------------------------------
     # Public interface
@@ -194,9 +197,13 @@ class TreeQAPipeline:
             )
             is_tagged_parallel = "[PARALLEL]" in node.question
             
-            do_parallel = (is_comparison or is_tagged_parallel) and not any(
+            has_dependent_children = any(
                 "[DEP:" in child.question for child in node.children
+            ) or any(
+                self._question_uses_anaphora(child.question)
+                for child in node.children[1:]
             )
+            do_parallel = (is_comparison or is_tagged_parallel) and not has_dependent_children
             
             if do_parallel:
                 if deadline is not None and time.monotonic() > deadline:
@@ -221,12 +228,7 @@ class TreeQAPipeline:
             else:
                 # Sequential resolution for dependent hops
                 accumulated: list[tuple[str, str]] = list(prior_hops)
-                propagate_sibling_context = any(
-                    "[DEP:" in child.question for child in node.children
-                ) or any(
-                    self._question_uses_anaphora(child.question)
-                    for child in node.children[1:]
-                )
+                propagate_sibling_context = has_dependent_children
                 for child in node.children:
                     if deadline is not None and time.monotonic() > deadline:
                         self._mark_timeout(node)
@@ -260,6 +262,13 @@ class TreeQAPipeline:
             ]
             if confidences:
                 node.validation = self._build_group_validation(node.status, confidences)
+            consensus_scores = [
+                child.source_consensus
+                for child in node.children
+                if isinstance(child.source_consensus, float)
+            ]
+            if consensus_scores:
+                node.source_consensus = sum(consensus_scores) / len(consensus_scores)
             return
         node.hop_context = self._hop_context(prior_hops)
         cache_key = self._cache_key(node.question, prior_hops)
@@ -297,7 +306,8 @@ class TreeQAPipeline:
         prior_hops = prior_hops or []
         base_question = node.question
         node.hop_context = self._hop_context(prior_hops)
-        retrieval_question = self._enrich_query(base_question, prior_hops)
+        contextual_question = self._contextualize_question(base_question, prior_hops)
+        retrieval_question = self._enrich_query(contextual_question, prior_hops)
 
         if deadline is not None and time.monotonic() > deadline:
             self._mark_timeout(node)
@@ -311,6 +321,7 @@ class TreeQAPipeline:
             else max(0, max_restructures)
         )
         skip_restructure = False
+        conflict_attempted = False
 
         for attempt in range(retry_cap + 1):
             if deadline is not None and time.monotonic() > deadline:
@@ -351,7 +362,7 @@ class TreeQAPipeline:
                     latency_ms=round(node.retrieval_latency_ms, 2),
                 )
             bridge_query, bridge_docs = self._bridge_director_country_evidence(
-                base_question, node.documents
+                contextual_question, node.documents
             )
             if bridge_docs:
                 merge_limit = max(
@@ -360,7 +371,7 @@ class TreeQAPipeline:
                     int(getattr(self.retriever, "top_k", self.settings.retrieval_top_k)),
                 )
                 node.documents = rank_documents(
-                    base_question,
+                    contextual_question,
                     [*node.documents, *bridge_docs],
                     merge_limit,
                 )
@@ -373,9 +384,47 @@ class TreeQAPipeline:
                     added=len(bridge_docs),
                 )
             node.answer = self.generator.generate_for_node(
-                base_question, node.documents, prior_hops=prior_hops
+                contextual_question, node.documents, prior_hops=prior_hops
             )
-            node.validation = self.validator.validate(node.answer, node.documents)
+            node.validation = self._validate_answer(contextual_question, node.answer, node.documents)
+            node.source_consensus = node.validation.consensus_score
+
+            if (
+                node.validation.source_conflict
+                and not conflict_attempted
+                and self.conflict_auditor is not None
+            ):
+                conflict_attempted = True
+                resolution = self.conflict_auditor.resolve(
+                    contextual_question, node.answer, node.documents
+                )
+                if resolution is not None:
+                    extra_docs = self.retriever.retrieve(resolution.query)
+                    if extra_docs:
+                        merge_limit = max(
+                            4,
+                            self.settings.retrieval_top_k + 1,
+                            int(getattr(self.retriever, "top_k", self.settings.retrieval_top_k)),
+                        )
+                        node.documents = rank_documents(
+                            contextual_question,
+                            [*node.documents, *extra_docs],
+                            merge_limit,
+                        )
+                        if "conflict_audit" not in node.retrieval_backends:
+                            node.retrieval_backends.append("conflict_audit")
+                        _cb(
+                            event="node_conflict_audit",
+                            node_id=node.node_id,
+                            query=resolution.query,
+                            reason=resolution.reason,
+                            added=len(extra_docs),
+                        )
+                        node.answer = self.generator.generate_for_node(
+                            contextual_question, node.documents, prior_hops=prior_hops
+                        )
+                        node.validation = self._validate_answer(contextual_question, node.answer, node.documents)
+                        node.source_consensus = node.validation.consensus_score
             
             if node.validation.passed:
                 node.status = "verified"
@@ -498,6 +547,17 @@ class TreeQAPipeline:
                 continue
         return used_query, merged
 
+    def _validate_answer(
+        self,
+        question: str,
+        answer: str,
+        documents: list[RetrievedDocument],
+    ) -> ValidationResult:
+        try:
+            return self.validator.validate(answer, documents, question=question)
+        except TypeError:
+            return self.validator.validate(answer, documents)
+
     @staticmethod
     def _is_director_country_question(question: str) -> bool:
         lowered = question.lower()
@@ -598,6 +658,63 @@ class TreeQAPipeline:
             return question
         extra = " ".join(ans for _, ans in prior_hops)
         return f"{question} {extra}"
+
+    @classmethod
+    def _contextualize_question(
+        cls,
+        question: str,
+        prior_hops: list[tuple[str, str]],
+    ) -> str:
+        if not prior_hops:
+            return question
+
+        entity = cls._extract_context_entity(prior_hops[-1][1])
+        if not entity:
+            return question
+
+        contextualized = re.sub(
+            r"\b(?:this|that)\s+body\s+of\s+water\b",
+            entity,
+            question,
+            flags=re.IGNORECASE,
+        )
+        contextualized = re.sub(
+            r"\b(?:this|that)\s+(?:sea|gulf|bay|strait|lake|river|reservoir)\b",
+            entity,
+            contextualized,
+            flags=re.IGNORECASE,
+        )
+        contextualized = re.sub(
+            r"\bthat\s+baseball\s+team\b",
+            entity,
+            contextualized,
+            flags=re.IGNORECASE,
+        )
+        return contextualized
+
+    @staticmethod
+    def _extract_context_entity(answer: str) -> str:
+        cleaned = TreeQAPipeline._strip_sources(answer)
+        water = re.search(
+            r"\b([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+)*\s+"
+            r"(?:Sea|Ocean|Bay|Strait|Reservoir|Lake|River))\b",
+            cleaned,
+        )
+        if water:
+            return water.group(1)
+
+        gulf = re.search(r"\b(Gulf\s+of\s+[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+)*)\b", cleaned)
+        if gulf:
+            return gulf.group(1)
+
+        team = re.search(
+            r"\b(?:The\s+)?([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){1,4})\s+won\b",
+            cleaned,
+        )
+        if team:
+            return team.group(1)
+
+        return ""
 
     @staticmethod
     def _strip_sources(text: str) -> str:

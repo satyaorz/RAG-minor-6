@@ -85,6 +85,13 @@ class QueryDecomposer:
 
     def _heuristic_decompose(self, query: str) -> list[str]:
         lowered = query.lower()
+        water_bridge = self._decompose_body_of_water_bridge(query)
+        if water_bridge:
+            return water_bridge
+        creation_bridge = self._decompose_creation_bridge(query)
+        if creation_bridge:
+            return creation_bridge
+
         if "director" not in lowered:
             return []
         if "both" not in lowered:
@@ -109,6 +116,65 @@ class QueryDecomposer:
             template = "What is the nationality of the director of {title}?"
 
         return [template.format(title=left), template.format(title=right)]
+
+    def _decompose_creation_bridge(self, query: str) -> list[str]:
+        lowered = query.lower()
+        if "when" not in lowered:
+            return []
+        if not re.search(r"\b(created|founded|formed|established|started|inaugurated)\b", lowered):
+            return []
+
+        world_series_year = re.search(r"\b(?:world series in|in)\s+((?:19|20)\d{2})\b", lowered)
+        if world_series_year and "world series" in lowered and "team" in lowered:
+            year = world_series_year.group(1)
+            return [
+                f"Which baseball team won the {year} World Series?",
+                "When was that baseball team established?",
+            ]
+
+        year_world_series = re.search(r"\b((?:19|20)\d{2})\s+world series\b", lowered)
+        if year_world_series and "team" in lowered:
+            year = year_world_series.group(1)
+            return [
+                f"Which baseball team won the {year} World Series?",
+                "When was that baseball team established?",
+            ]
+
+        return []
+
+    def _decompose_body_of_water_bridge(self, query: str) -> list[str]:
+        lowered = query.lower()
+        if "body of water" not in lowered or "border" not in lowered:
+            return []
+
+        entity = None
+        patterns = [
+            r"body of water (?:in|where) which (?P<entity>[^?]+?) is located",
+            r"body of water (?:in|where) (?P<entity>[^?]+?) is located",
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, query, flags=re.IGNORECASE)
+            if match:
+                entity = match.group("entity").strip(" ?.;,")
+                break
+        if not entity:
+            return []
+
+        city_clause = "city"
+        intro_match = re.match(
+            r"\s*Which\s+(?P<clause>.+?)\s+borders\s+the\s+body\s+of\s+water",
+            query,
+            flags=re.IGNORECASE,
+        )
+        if intro_match:
+            clause = intro_match.group("clause").strip(" ?.;,")
+            if clause:
+                city_clause = clause
+
+        return [
+            f"Which body of water is {entity} located in?",
+            f"Which {city_clause} borders that body of water?",
+        ]
 
     def _extract_dual_titles(self, query: str) -> str | None:
         match = re.search(

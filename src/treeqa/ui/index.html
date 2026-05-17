@@ -304,6 +304,16 @@
       color: #3730a3;
       border: 1px solid #c7d2fe;
     }
+    .badge.conflict {
+      background: #fef2f2;
+      color: #b91c1c;
+      border: 1px solid #fecaca;
+    }
+    .badge.consensus {
+      background: #ecfeff;
+      color: #0f766e;
+      border: 1px solid #99f6e4;
+    }
 
     .attempts-tag { font-size: .7rem; color: var(--muted); }
 
@@ -975,6 +985,7 @@
     if (e.event === 'node_start')   return `⏳ [${e.node_id}]: ${e.question}`;
     if (e.event === 'node_route')   return `🧭 [${e.node_id}] ${prettyRoute(e.route)} via ${(e.backends || []).join('+') || 'n/a'} · ${Math.round(e.latency_ms || 0)}ms`;
     if (e.event === 'node_bridge')  return `🧩 [${e.node_id}] entity-bridge query added ${e.added || 0} doc(s)`;
+    if (e.event === 'node_conflict_audit') return `🧪 [${e.node_id}] conflict audit: +${e.added || 0} doc(s)`;
     if (e.event === 'node_done')    return `${e.status === 'verified' ? '✅' : '⚠️'} [${e.node_id}] ${e.status}`;
     if (e.event === 'node_restructure') return `🔧 [${e.node_id}] restructuring: ${e.question}`;
     if (e.event === 'tree_retry')   return `🔁 Retry ${e.attempt}: refined → "${e.refined_query}"`;
@@ -1518,6 +1529,9 @@
   function renderNode(node) {
     const status    = node.status || 'pending';
     const conf      = node.validation ? node.validation.confidence : null;
+    const scc       = node.validation ? node.validation.consensus_score : null;
+    const conflict  = node.validation ? node.validation.source_conflict : false;
+    const catMatch  = node.validation ? node.validation.category_match : true;
     const confPct   = conf !== null ? Math.round(conf * 100) : null;
     const confClass = conf === null ? '' : conf >= 0.7 ? 'high' : conf >= 0.4 ? 'medium' : 'low';
     const badge     = status === 'verified' ? '✓ verified' : status === 'needs_review' ? '⚠ needs review' : status;
@@ -1541,6 +1555,15 @@
     }
     if (node.was_restructured) {
       meta.innerHTML += `<span class="badge restructured">restructured</span>`;
+    }
+    if (scc !== null && Number.isFinite(scc)) {
+      meta.innerHTML += `<span class="badge consensus">SCC ${Math.round(scc * 100)}%</span>`;
+    }
+    if (!catMatch) {
+      meta.innerHTML += `<span class="badge conflict">category mismatch</span>`;
+    }
+    if (conflict) {
+      meta.innerHTML += `<span class="badge conflict">source conflict</span>`;
     }
     body.appendChild(meta);
 

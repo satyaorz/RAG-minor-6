@@ -1,4 +1,4 @@
-# Project TreeQA: RAG Hallucination Detection and Mitigation
+# HAMH-RAG: RAG Hallucination Detection and Mitigation
 
 ## 1. The Aim
 
@@ -32,7 +32,7 @@ Halt forward propagation if a sub-answer is flagged as a hallucination. Prompt t
 ## 3. The Project Plan (Roadmap)
 
 ### Phase 1: Research and Setup (Weeks 1-2)
-* Locate and analyze the open-source TreeQA code mentioned in the research paper.
+* Locate and analyze the reference TreeQA paper and related open-source implementations.
 * Set up LangChain and LangGraph for workflow orchestration.
 * Select LLMs (e.g., GPT-4o, Claude 3.5, or local Llama-3).
 * Provision databases (Neo4j for graph data, Qdrant/ChromaDB for vector data).

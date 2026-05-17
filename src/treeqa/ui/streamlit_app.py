@@ -22,8 +22,8 @@ def _standard_rag_docs(pipeline: TreeQAPipeline, query: str) -> list[RetrievedDo
 
 
 def main() -> None:
-    st.set_page_config(page_title="TreeQA", layout="wide")
-    st.title("Project TreeQA")
+    st.set_page_config(page_title="HAMH-RAG", layout="wide")
+    st.title("HAMH-RAG")
     st.caption("Hallucination-aware multi-hop RAG scaffold")
 
     default_query = (
@@ -33,16 +33,16 @@ def main() -> None:
 
     mode = st.radio(
         "Mode",
-        ["⚡ Normal RAG", "🌳 TreeQA", "⚖ Compare Both"],
+        ["⚡ Normal RAG", "🌳 HAMH-RAG", "⚖ Compare Both"],
         horizontal=True,
         help=(
             "Normal RAG: vector-only single-hop retrieve + LLM answer. "
-            "TreeQA: decompose → retrieve → validate → synthesise. "
+            "HAMH-RAG: decompose → retrieve → validate → synthesise. "
             "Compare: run both side-by-side."
         ),
     )
 
-    run_label = {"⚡ Normal RAG": "Run Normal RAG", "🌳 TreeQA": "Run TreeQA", "⚖ Compare Both": "Compare Both"}[mode]
+    run_label = {"⚡ Normal RAG": "Run Normal RAG", "🌳 HAMH-RAG": "Run HAMH-RAG", "⚖ Compare Both": "Compare Both"}[mode]
 
     if st.button(run_label, type="primary"):
         pipeline = TreeQAPipeline()
@@ -50,7 +50,7 @@ def main() -> None:
         if mode == "⚡ Normal RAG":
             _render_rag(pipeline, query)
 
-        elif mode == "🌳 TreeQA":
+        elif mode == "🌳 HAMH-RAG":
             result = pipeline.run(query)
             st.subheader("Final answer")
             st.write(result.final_answer)
@@ -76,7 +76,7 @@ def main() -> None:
                         st.write(doc.content[:400])
 
             with col_tqa:
-                st.subheader("🌳 TreeQA")
+                st.subheader("🌳 HAMH-RAG")
                 result = pipeline.run(query)
                 st.success(result.final_answer)
                 nodes = result.root.iter_nodes()
@@ -84,7 +84,7 @@ def main() -> None:
                 st.caption(f"Status: {result.root.status} · {verified} node(s) verified")
                 _render_summary(result.root)
 
-            st.subheader("Full TreeQA logic tree")
+            st.subheader("Full HAMH-RAG logic tree")
             _render_node(result.root)
 
 
@@ -129,6 +129,12 @@ def _render_node(node: QueryNode, depth: int = 0) -> None:
     confidence = (
         f"{node.validation.confidence:.2f}" if node.validation is not None else "n/a"
     )
+    consensus = (
+        f"{node.validation.consensus_score:.2f}" if node.validation is not None else "n/a"
+    )
+    conflict = (
+        "conflict" if node.validation is not None and node.validation.source_conflict else "ok"
+    )
     margin = depth * 24
     st.markdown(
         f"""
@@ -141,7 +147,7 @@ def _render_node(node: QueryNode, depth: int = 0) -> None:
             margin-bottom: 12px;
         ">
             <div style="font-size: 0.8rem; color: #475569; margin-bottom: 6px;">
-                {escape(node.node_id)} · {escape(node.status)} · attempts {node.attempts} · confidence {escape(confidence)}
+                {escape(node.node_id)} · {escape(node.status)} · attempts {node.attempts} · confidence {escape(confidence)} · scc {escape(consensus)} · {escape(conflict)}
             </div>
             <div style="font-weight: 600; margin-bottom: 8px;">{escape(node.question)}</div>
             <div>{escape(node.answer or "Pending answer")}</div>

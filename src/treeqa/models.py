@@ -16,6 +16,9 @@ class ValidationResult:
     passed: bool
     confidence: float
     rationale: str
+    category_match: bool = True
+    source_conflict: bool = False
+    consensus_score: float = 1.0
 
 
 @dataclass(slots=True)

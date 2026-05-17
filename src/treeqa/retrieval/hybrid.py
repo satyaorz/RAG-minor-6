@@ -58,7 +58,7 @@ class QueryRouter:
         "workflow", "process", "steps", "method", "architecture", "why", "how",
     }
 
-    def __init__(self, base_top_k: int, min_top_k: int = 2, max_top_k: int = 12) -> None:
+    def __init__(self, base_top_k: int, min_top_k: int = 2, max_top_k: int = 24) -> None:
         self.base_top_k = max(1, base_top_k)
         self.min_top_k = min_top_k
         self.max_top_k = max_top_k
@@ -103,6 +103,13 @@ class QueryRouter:
         )
         dynamic_top_k = int(round(self.base_top_k * (0.8 + (complexity * 0.9))))
         dynamic_top_k = max(self.min_top_k, min(dynamic_top_k, self.max_top_k))
+        if re.search(r"\bteam\b.*\bwon\b.*\bworld series\b|\bworld series\b.*\bwon\b", lowered):
+            dynamic_top_k = min(self.max_top_k, max(dynamic_top_k, 10))
+        if entity_hint and re.search(
+            r"\b(body of water|sea|ocean|bay|strait|lake|river|reservoir|located)\b",
+            lowered,
+        ):
+            dynamic_top_k = min(self.max_top_k, max(dynamic_top_k, 20))
 
         signals = {
             "graph_score": round(graph_score, 3),

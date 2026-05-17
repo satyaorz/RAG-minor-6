@@ -1,2 +1,2 @@
-"""UI entrypoints for TreeQA."""
+"""UI entrypoints for HAMH-RAG."""
 

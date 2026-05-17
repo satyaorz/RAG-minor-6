@@ -87,35 +87,46 @@ class LocalVectorBackend:
     is not installed the backend silently falls back to keyword scoring.
     """
 
-    def __init__(self, index_path: str, embedding_model: str = "all-MiniLM-L6-v2") -> None:
+    def __init__(
+        self,
+        index_path: str,
+        embedding_model: str = "all-MiniLM-L6-v2",
+        embedding_offline: bool = False,
+    ) -> None:
         self.index_path = Path(index_path)
         if not self.index_path.exists():
             raise RuntimeError(
                 f"Local vector index not found at {self.index_path}. Run `python -m treeqa.cli ingest`."
             )
         self._embedding_model_name = embedding_model
+        self._embedding_offline = embedding_offline
         self._embeddings_cache_path = self.index_path.with_suffix(".embeddings.npy")
         self.documents = self._load_index()
+        self._doc_tokens = self._build_doc_tokens()
         self._idf = self._build_idf()
-        self._model, self._doc_embeddings = self._build_embeddings(embedding_model)
+        self._model, self._doc_embeddings = self._build_embeddings(
+            embedding_model,
+            embedding_offline=embedding_offline,
+        )
 
     # ------------------------------------------------------------------
     # Initialisation helpers
     # ------------------------------------------------------------------
 
-    def _build_embeddings(self, model_name: str):
+    def _build_embeddings(self, model_name: str, embedding_offline: bool = False):
         """Return (model, embeddings_array) or (None, None) on import error.
 
         Embeddings are cached to `<index>.embeddings.npy` so they are only
         computed once. The cache is invalidated when the index file is newer.
         """
         try:
-            from sentence_transformers import SentenceTransformer  # type: ignore
             import numpy as np
         except ImportError:
             return None, None
 
-        model = SentenceTransformer(model_name)
+        model = _load_sentence_transformer(model_name, embedding_offline=embedding_offline)
+        if model is None:
+            return None, None
 
         cache = self._embeddings_cache_path
         if (
@@ -131,16 +142,24 @@ class LocalVectorBackend:
         np.save(str(cache), embeddings)
         return model, embeddings
 
+    def _build_doc_tokens(self) -> list[set[str]]:
+        """Pre-tokenize documents once to speed up lexical scoring."""
+        from treeqa.retrieval.scoring import tokenize
+
+        return [set(tokenize(self._scoring_text(record))) for record in self.documents]
+
     def _build_idf(self) -> dict[str, float]:
         """Build IDF table: log(N / df) for every token across all documents."""
         import math
-        from treeqa.retrieval.scoring import tokenize
 
+        if not hasattr(self, "_doc_tokens"):
+            self._doc_tokens = self._build_doc_tokens()
         df: dict[str, int] = {}
-        N = len(self.documents)
-        for record in self.documents:
-            unique_tokens = set(tokenize(self._scoring_text(record)))
-            for tok in unique_tokens:
+        N = len(self._doc_tokens)
+        if N == 0:
+            return {}
+        for tokens in self._doc_tokens:
+            for tok in tokens:
                 df[tok] = df.get(tok, 0) + 1
         return {tok: math.log(N / count) for tok, count in df.items()}
 
@@ -235,8 +254,7 @@ class LocalVectorBackend:
         max_possible = sum(token_weights.values()) or 1.0
 
         results: list[RetrievedDocument] = []
-        for record in self.documents:
-            doc_tokens = set(tokenize(self._scoring_text(record)))
+        for record, doc_tokens in zip(self.documents, self._doc_tokens, strict=False):
             raw_score = sum(w for tok, w in token_weights.items() if tok in doc_tokens)
             if raw_score <= 0:
                 continue
@@ -273,30 +291,44 @@ class FaissVectorBackend:
     Search strategy: same RRF hybrid (FAISS semantic + IDF-weighted lexical) as LocalVectorBackend.
     """
 
-    def __init__(self, faiss_path: str, meta_path: str, embedding_model: str = "all-MiniLM-L6-v2") -> None:
+    def __init__(
+        self,
+        faiss_path: str,
+        meta_path: str,
+        embedding_model: str = "all-MiniLM-L6-v2",
+        embedding_offline: bool = False,
+    ) -> None:
         import faiss  # type: ignore
 
         self._index = faiss.read_index(str(faiss_path))
         self.documents: list[dict] = json.loads(Path(meta_path).read_text(encoding="utf-8"))
+        self._doc_tokens = self._build_doc_tokens()
         self._idf = self._build_idf()
-        try:
-            from sentence_transformers import SentenceTransformer  # type: ignore
-            self._model = SentenceTransformer(embedding_model)
-        except ImportError:
-            self._model = None  # type: ignore
+        self._model = _load_sentence_transformer(
+            embedding_model,
+            embedding_offline=embedding_offline,
+        )
 
     # ------------------------------------------------------------------
     # Initialisation helpers (shared logic with LocalVectorBackend)
     # ------------------------------------------------------------------
 
-    def _build_idf(self) -> dict[str, float]:
-        import math
+    def _build_doc_tokens(self) -> list[set[str]]:
         from treeqa.retrieval.scoring import tokenize
 
+        return [set(tokenize(self._scoring_text(record))) for record in self.documents]
+
+    def _build_idf(self) -> dict[str, float]:
+        import math
+
+        if not hasattr(self, "_doc_tokens"):
+            self._doc_tokens = self._build_doc_tokens()
         df: dict[str, int] = {}
-        N = len(self.documents)
-        for record in self.documents:
-            for tok in set(tokenize(self._scoring_text(record))):
+        N = len(self._doc_tokens)
+        if N == 0:
+            return {}
+        for tokens in self._doc_tokens:
+            for tok in tokens:
                 df[tok] = df.get(tok, 0) + 1
         return {tok: math.log(N / count) for tok, count in df.items()}
 
@@ -377,8 +409,7 @@ class FaissVectorBackend:
         max_possible = sum(token_weights.values()) or 1.0
 
         results: list[RetrievedDocument] = []
-        for record in self.documents:
-            doc_tokens = set(tokenize(self._scoring_text(record)))
+        for record, doc_tokens in zip(self.documents, self._doc_tokens, strict=False):
             raw_score = sum(w for tok, w in token_weights.items() if tok in doc_tokens)
             if raw_score <= 0:
                 continue
@@ -411,6 +442,7 @@ def build_vector_backend(settings: TreeQASettings) -> VectorBackend:
                     faiss_path=str(faiss_path),
                     meta_path=str(meta_path),
                     embedding_model=settings.embedding_model,
+                    embedding_offline=settings.embedding_offline,
                 )
             except (ImportError, ModuleNotFoundError):
                 _log.warning(
@@ -420,6 +452,7 @@ def build_vector_backend(settings: TreeQASettings) -> VectorBackend:
         return LocalVectorBackend(
             index_path=str(index_path),
             embedding_model=settings.embedding_model,
+            embedding_offline=settings.embedding_offline,
         )
     if provider == "qdrant":
         if not settings.vector_store_url:
@@ -434,3 +467,33 @@ def build_vector_backend(settings: TreeQASettings) -> VectorBackend:
             api_key=settings.vector_api_key,
         )
     raise ValueError(f"Unsupported vector provider: {settings.vector_provider}")
+
+
+def _load_sentence_transformer(model_name: str, embedding_offline: bool = False):
+    """Load an embedding model without accidental network calls in offline mode."""
+    try:
+        from sentence_transformers import SentenceTransformer  # type: ignore
+    except ImportError:
+        return None
+
+    kwargs = {"local_files_only": True} if embedding_offline else {}
+    try:
+        return SentenceTransformer(model_name, **kwargs)
+    except TypeError:
+        if not embedding_offline:
+            raise
+        _log.warning(
+            "Installed sentence-transformers does not support local-only loading; "
+            "falling back to lexical retrieval."
+        )
+        return None
+    except Exception as exc:
+        if not embedding_offline:
+            raise
+        _log.warning(
+            "Embedding model `%s` is not available from the local cache; "
+            "falling back to lexical retrieval.",
+            model_name,
+        )
+        _log.debug("Embedding model load failed: %s", exc)
+        return None

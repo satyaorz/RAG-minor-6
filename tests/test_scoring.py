@@ -41,6 +41,46 @@ class RetrievalScoringTest(unittest.TestCase):
 
         self.assertEqual(len(ranked), 1)
 
+    def test_rank_documents_boosts_named_entity_match(self) -> None:
+        documents = [
+            RetrievedDocument(
+                source_id="Banderas_River-chunk-1",
+                source_type="vector",
+                content="Banderas River is located in a department with municipal water supply.",
+                score=0.95,
+            ),
+            RetrievedDocument(
+                source_id="Estonia-chunk-13",
+                source_type="vector",
+                content="Saaremaa is an Estonian island in the Baltic Sea.",
+                score=0.4,
+            ),
+        ]
+
+        ranked = rank_documents("In which body of water is Saaremaa located?", documents, 2)
+
+        self.assertEqual(ranked[0].source_id, "Estonia-chunk-13")
+
+    def test_rank_documents_boosts_requested_answer_type(self) -> None:
+        documents = [
+            RetrievedDocument(
+                source_id="Estonia-chunk-3",
+                source_type="vector",
+                content="A legend says Tharapita flew to Oesel, Saaremaa from Virumaa.",
+                score=0.95,
+            ),
+            RetrievedDocument(
+                source_id="Estonia-chunk-12",
+                source_type="vector",
+                content="Saaremaa is an Estonian island in the Baltic Sea.",
+                score=0.4,
+            ),
+        ]
+
+        ranked = rank_documents("Which body of water is Saaremaa located in?", documents, 2)
+
+        self.assertEqual(ranked[0].source_id, "Estonia-chunk-12")
+
 
 if __name__ == "__main__":
     unittest.main()

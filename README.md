@@ -1,6 +1,6 @@
-# Project TreeQA
+# HAMH-RAG
 
-A hallucination-aware, multi-hop RAG system with a logic-tree workflow and interactive web UI.
+HAMH-RAG (Hallucination-Aware Multi-Hop RAG) is a hallucination-aware, multi-hop RAG system with a logic-tree workflow and interactive web UI. The code package is still named `treeqa` for now.
 
 ## Layout
 
@@ -9,7 +9,7 @@ A hallucination-aware, multi-hop RAG system with a logic-tree workflow and inter
 - `src/treeqa/retrieval/`: hybrid retrieval interfaces
 - `src/treeqa/api/`: FastAPI backend (REST API + SPA server)
 - `src/treeqa/ui/`: Streamlit UI and the vanilla-JS SPA (`index.html`)
-- `tests/`: 46 offline tests (~14ms)
+- `tests/`: offline unit and integration tests
 
 ## Quick start
 
@@ -20,13 +20,29 @@ A hallucination-aware, multi-hop RAG system with a logic-tree workflow and inter
 5. Check setup: `python -m treeqa.cli doctor`
 6. Run tests: `python -m pytest tests/ -q`
 
+For this repo, prefer the checked command targets so every workflow uses the
+same interpreter under `.venv`:
+
+```bash
+make install-full
+make doctor
+make test
+make bench
+make app
+```
+
+`make doctor`, `make test`, and `make bench` force Hugging Face/Transformers
+offline mode. That prevents repeated network checks during normal development
+and benchmarking. Run `make ingest` without offline mode once when you actually
+want to download/cache the embedding model and rebuild the FAISS index.
+
 ## Web UI
 
 Start the FastAPI server (serves the interactive SPA at `http://localhost:8000`):
 
 ```bash
-pip install -e ".[api]"
-PYTHONPATH=src uvicorn treeqa.api.app:app --reload --port 8000
+.venv/bin/python -m pip install -e ".[api]"
+.venv/bin/python -m uvicorn treeqa.api.app:app --reload --port 8000
 ```
 
 Then open `http://localhost:8000` in a browser. Type a question and press **Run ▶** (or Ctrl+Enter).
@@ -44,17 +60,22 @@ The logic tree renders each sub-question node with its status, confidence, answe
 ## Streamlit UI (alternative)
 
 ```bash
-PYTHONPATH=src streamlit run src/treeqa/ui/streamlit_app.py
+.venv/bin/python -m streamlit run src/treeqa/ui/streamlit_app.py
 ```
 
 ## CLI
 
 ```bash
-python -m treeqa.cli run        # run the pipeline interactively
-python -m treeqa.cli ingest     # build local retrieval indices from data/
-python -m treeqa.cli doctor     # check config
-python -m treeqa.cli doctor --live-llm   # verify live LLM round-trip
+.venv/bin/python -m treeqa.cli run        # run the pipeline interactively
+.venv/bin/python -m treeqa.cli ingest     # build local retrieval indices from data/
+.venv/bin/python -m treeqa.cli doctor     # check config
+.venv/bin/python -m treeqa.cli doctor --live-llm   # verify live LLM round-trip
+.venv/bin/python -m treeqa.cli bench --dataset data/benchmark/sample.jsonl --limit 50 --mode both
 ```
+
+## Benchmarking
+
+See [BENCHMARK.md](BENCHMARK.md) for the current protocol and targets.
 
 ## Provider setup
 
@@ -83,6 +104,9 @@ Optional provider packages:
 
 - `pip install -e .[providers]`
 
+FAISS is auto-selected for the `local` vector provider when a `.faiss` index is present.
+Install `faiss-cpu` (or the providers extra) and run `python -m treeqa.cli ingest` to build the index.
+
 ### OpenRouter example
 
 Use this configuration to target OpenRouter with the current recommended free model stack:
@@ -94,7 +118,7 @@ TREEQA_LLM_MODEL=arcee-ai/trinity-mini:free
 TREEQA_LLM_FALLBACK_MODELS=nvidia/nemotron-3-nano-30b-a3b:free,arcee-ai/trinity-large-preview:free,qwen/qwen3-4b:free,openrouter/free
 OPENROUTER_API_KEY=your-key
 TREEQA_OPENROUTER_SITE_URL=http://localhost
-TREEQA_OPENROUTER_APP_NAME=TreeQA
+TREEQA_OPENROUTER_APP_NAME=HAMH-RAG
 ```
 
 ### Minimal real setup for your current case
@@ -110,7 +134,7 @@ TREEQA_LLM_MODEL=arcee-ai/trinity-mini:free
 TREEQA_LLM_FALLBACK_MODELS=nvidia/nemotron-3-nano-30b-a3b:free,arcee-ai/trinity-large-preview:free,qwen/qwen3-4b:free,openrouter/free
 OPENROUTER_API_KEY=your_openrouter_key
 TREEQA_OPENROUTER_SITE_URL=http://localhost
-TREEQA_OPENROUTER_APP_NAME=TreeQA
+TREEQA_OPENROUTER_APP_NAME=HAMH-RAG
 
 TREEQA_VECTOR_PROVIDER=local
 TREEQA_GRAPH_PROVIDER=local
@@ -144,7 +168,7 @@ python -m treeqa.cli doctor --live-llm
 
 `doctor` validates configuration without network calls. `doctor --live-llm` performs a real LLM probe and will surface issues such as invalid keys, rate limits, or blocked network access.
 
-When multiple fallback models are configured, TreeQA will try them in order until one succeeds.
+When multiple fallback models are configured, HAMH-RAG will try them in order until one succeeds.
 
 ### When you need more than that
 

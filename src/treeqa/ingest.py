@@ -66,7 +66,13 @@ def build_local_indices(settings: TreeQASettings | None = None) -> IngestReport:
     _write_jsonl(vector_index_path, [asdict(chunk) for chunk in chunks])
     _write_jsonl(graph_index_path, [asdict(fact) for fact in facts])
 
-    _build_faiss_index(chunks, settings.embedding_model, faiss_path, meta_path)
+    _build_faiss_index(
+        chunks,
+        settings.embedding_model,
+        faiss_path,
+        meta_path,
+        embedding_offline=settings.embedding_offline,
+    )
 
     return IngestReport(
         vector_chunks=len(chunks),
@@ -234,6 +240,7 @@ def _build_faiss_index(
     model_name: str,
     faiss_path: Path,
     meta_path: Path,
+    embedding_offline: bool = False,
 ) -> None:
     """Encode only new chunks and add them to the FAISS index.
 
@@ -244,10 +251,10 @@ def _build_faiss_index(
     try:
         import faiss  # type: ignore
         import numpy as np  # type: ignore
-        from sentence_transformers import SentenceTransformer  # type: ignore
     except ImportError:
         return
 
+    from treeqa.backends.vector import _load_sentence_transformer
     from treeqa.retrieval.scoring import normalize_text
 
     if not chunks:
@@ -292,7 +299,13 @@ def _build_faiss_index(
     if not new_chunks:
         print("[ingest] No new chunks to encode after rebuild. Skipping.")
         return
-    model = SentenceTransformer(model_name)
+    model = _load_sentence_transformer(model_name, embedding_offline=embedding_offline)
+    if model is None:
+        print(
+            f"[ingest] Embedding model `{model_name}` is not available locally. "
+            "Skipping FAISS indexing."
+        )
+        return
     
     def _to_text(c):
         content = c.content if hasattr(c, "content") else c["content"]

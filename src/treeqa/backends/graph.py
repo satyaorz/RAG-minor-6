@@ -121,11 +121,7 @@ def build_graph_backend(settings: TreeQASettings) -> GraphBackend:
     if provider in {"", "memory"}:
         return MemoryGraphBackend()
     if provider == "local":
-        index_path = (
-            settings.resolve_path(settings.local_graph_index_path)
-            if settings.local_graph_index_path
-            else settings.resolved_data_dir / "index" / "graph_facts.jsonl"
-        )
+        index_path = _resolve_local_graph_index_path(settings)
         return LocalGraphBackend(index_path=str(index_path))
     if provider == "neo4j":
         if not settings.graph_store_url:
@@ -139,3 +135,20 @@ def build_graph_backend(settings: TreeQASettings) -> GraphBackend:
             query=settings.graph_query,
         )
     raise ValueError(f"Unsupported graph provider: {settings.graph_provider}")
+
+
+def _resolve_local_graph_index_path(settings: TreeQASettings) -> Path:
+    if settings.local_graph_index_path:
+        candidate = settings.resolve_path(settings.local_graph_index_path)
+        if candidate.exists():
+            return candidate
+
+    default_index = settings.resolved_data_dir / "index" / "graph_facts.jsonl"
+    if default_index.exists():
+        return default_index
+
+    source_facts = settings.resolved_data_dir / "graph" / "facts.jsonl"
+    if source_facts.exists():
+        return source_facts
+
+    return default_index

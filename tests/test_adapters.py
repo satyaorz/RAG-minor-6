@@ -70,6 +70,30 @@ class AdapterTest(unittest.TestCase):
             ["Who built TreeQA?", "How is it validated?"],
         )
 
+    def test_decomposer_handles_world_series_creation_bridge(self) -> None:
+        decomposer = QueryDecomposer(
+            llm_client=FakeLLMClient(
+                json_response={
+                    "sub_questions": [
+                        "What year did the team win the 2015 World Series?",
+                        "How was the World Series structured in 2015?",
+                    ]
+                }
+            )
+        )
+
+        root = decomposer.decompose(
+            "When was the baseball team winning the world series in 2015 baseball created?"
+        )
+
+        self.assertEqual(
+            [node.question for node in root.children],
+            [
+                "Which baseball team won the 2015 World Series?",
+                "When was that baseball team established?",
+            ],
+        )
+
     def test_correction_engine_uses_llm_rewrite_when_available(self) -> None:
         corrector = CorrectionEngine(
             llm_client=FakeLLMClient(text_response="TreeQA hallucination mitigation workflow")

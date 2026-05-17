@@ -371,6 +371,73 @@ class TreeQAPipelineTest(unittest.TestCase):
             "What country is the director of Film B from?",
         )
 
+    def test_pipeline_resolves_anaphoric_body_of_water_sequentially(self) -> None:
+        class _Retriever:
+            def __init__(self) -> None:
+                self.queries: list[str] = []
+
+            def retrieve(self, question: str) -> list[RetrievedDocument]:
+                self.queries.append(question)
+                if "Saaremaa" in question:
+                    return [
+                        RetrievedDocument(
+                            source_id="Estonia-chunk-13",
+                            source_type="vector",
+                            content="Saaremaa is an Estonian island in the Baltic Sea.",
+                            score=0.9,
+                        )
+                    ]
+                return [
+                    RetrievedDocument(
+                        source_id="Baltic_Sea-chunk-1",
+                        source_type="vector",
+                        content=(
+                            "The Baltic Sea has Russian shore areas including "
+                            "the Saint Petersburg area."
+                        ),
+                        score=0.9,
+                    )
+                ]
+
+        decomposer = MagicMock()
+        decomposer.decompose.return_value = QueryNode(
+            node_id="root",
+            question="Which major Russian city borders the body of water in which Saaremaa is located?",
+            children=[
+                QueryNode(node_id="node-1", question="In which body of water is Saaremaa located?"),
+                QueryNode(node_id="node-2", question="Which major Russian city borders this body of water?"),
+            ],
+        )
+
+        retriever = _Retriever()
+        validator = _stub_validator(passed=True, confidence=0.95)
+        generator = MagicMock()
+        generator.generate_for_node.side_effect = [
+            "Saaremaa is located in the Baltic Sea. Sources: vector:Estonia-chunk-13",
+            "Saint Petersburg borders the Baltic Sea. Sources: vector:Baltic_Sea-chunk-1",
+        ]
+        generator.generate_final.return_value = (
+            "Saint Petersburg borders the Baltic Sea. Sources: vector:Baltic_Sea-chunk-1"
+        )
+
+        pipeline = _make_pipeline(
+            decomposer=decomposer,
+            retriever=retriever,
+            validator=validator,
+            generator=generator,
+        )
+
+        result = pipeline.run(
+            "Which major Russian city borders the body of water in which Saaremaa is located?",
+            tree_retries_override=0,
+            max_retries_override=0,
+        )
+
+        self.assertEqual(result.root.status, "verified")
+        self.assertEqual(retriever.queries[0], "In which body of water is Saaremaa located?")
+        self.assertTrue(retriever.queries[1].startswith("Which major Russian city borders Baltic Sea?"))
+        self.assertIn("Saaremaa is located in the Baltic Sea.", retriever.queries[1])
+
 
 if __name__ == "__main__":
     unittest.main()

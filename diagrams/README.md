@@ -1,4 +1,4 @@
-# TreeQA Optimization Diagrams
+# HAMH-RAG Optimization Diagrams
 
 All diagrams related to the route optimization and system architecture.
 

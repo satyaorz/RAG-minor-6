@@ -4,7 +4,7 @@ from treeqa.pipeline import TreeQAPipeline
 
 
 def build_workflow() -> TreeQAPipeline:
-    """Factory kept separate so a LangGraph implementation can replace it later."""
+    """Factory kept separate so a future orchestrator can replace it later."""
 
     return TreeQAPipeline()
 

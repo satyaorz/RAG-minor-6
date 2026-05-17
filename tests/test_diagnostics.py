@@ -27,7 +27,11 @@ class TreeQADiagnosticsTest(unittest.TestCase):
         report = run_diagnostics(settings=settings, live_llm_probe=False)
 
         self.assertTrue(report.ok)
-        self.assertEqual(len(report.checks), 3)
+        self.assertEqual(len(report.checks), 4)
+        self.assertEqual(
+            {check.name for check in report.checks},
+            {"runtime", "llm", "vector", "graph"},
+        )
         self.assertTrue(all(check.ok for check in report.checks))
 
     def test_diagnostics_fails_for_invalid_qdrant_config(self) -> None:

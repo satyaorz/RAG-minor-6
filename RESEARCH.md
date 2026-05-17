@@ -1,4 +1,4 @@
-# RESEARCH: Adaptive Reasoning-Tree Restructuring (ART-R)
+# RESEARCH: ART-R for HAMH-RAG
 
 ## 1. Abstract
 Traditional Retrieval-Augmented Generation (RAG) systems often rely on static query decomposition. When a sub-question fails due to insufficient evidence or contradictory sources, these systems either stall or perform naive retries. **ART-R** is a novel agentic architecture that treats the reasoning path as a dynamic, mutable tree. When validation fails, the system performs a structural "self-healing" operation by re-decomposing the failed node into more granular, verifiable sub-tasks.

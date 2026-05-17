@@ -47,6 +47,7 @@ class TreeQASettings:
     vector_api_key: str = ""
     local_vector_index_path: str = ""
     embedding_model: str = "all-MiniLM-L6-v2"
+    embedding_offline: bool = False
     graph_store_url: str = ""
     graph_provider: str = "memory"
     graph_database: str = ""
@@ -100,6 +101,9 @@ class TreeQASettings:
             vector_api_key=os.getenv("TREEQA_VECTOR_API_KEY", ""),
             local_vector_index_path=os.getenv("TREEQA_LOCAL_VECTOR_INDEX_PATH", ""),
             embedding_model=os.getenv("TREEQA_EMBEDDING_MODEL", "all-MiniLM-L6-v2"),
+            embedding_offline=_bool_env("TREEQA_EMBEDDING_OFFLINE")
+            or _bool_env("HF_HUB_OFFLINE")
+            or _bool_env("TRANSFORMERS_OFFLINE"),
             graph_store_url=os.getenv("GRAPH_STORE_URL", ""),
             graph_provider=os.getenv("TREEQA_GRAPH_PROVIDER", "memory"),
             graph_database=os.getenv("TREEQA_GRAPH_DATABASE", ""),
@@ -124,3 +128,10 @@ class TreeQASettings:
 def _split_csv_env(name: str) -> tuple[str, ...]:
     raw = os.getenv(name, "")
     return tuple(item.strip() for item in raw.split(",") if item.strip())
+
+
+def _bool_env(name: str, default: bool = False) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}

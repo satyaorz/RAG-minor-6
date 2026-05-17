@@ -1,4 +1,4 @@
-"""TreeQA scaffold package."""
+"""HAMH-RAG scaffold package (internal module name: treeqa)."""
 
 from treeqa.pipeline import TreeQAPipeline
 

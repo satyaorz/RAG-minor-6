@@ -1,4 +1,4 @@
-# TreeQA Route Optimization: Complete Documentation
+# HAMH-RAG Route Optimization: Complete Documentation
 
 ## Executive Summary
 
@@ -256,7 +256,7 @@ def _predict_graph_fallback_needed(self, question: str, plan: RoutePlan) -> bool
 └─────────────────────────────────────────────────────────┘
                            ↓
 ┌─────────────────────────────────────────────────────────┐
-│              TREEQA PIPELINE                            │
+│             HAMH-RAG PIPELINE                           │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  │
 │  │ Decomposer   │→ │   Retriever  │→ │  Validator   │  │
 │  │   (LLM)      │  │  (OPTIMIZED) │  │   (LLM)      │  │

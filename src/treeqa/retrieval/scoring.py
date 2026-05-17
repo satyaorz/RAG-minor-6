@@ -88,14 +88,25 @@ def rank_documents(question: str, documents: list[RetrievedDocument], limit: int
     source_type_counts: dict[str, int] = {}
     for document in sorted(
         documents,
-        key=lambda item: (lexical_score(question, item.content) + item.score),
+        key=lambda item: (
+            lexical_score(question, item.content)
+            + _entity_overlap_bonus(question, item)
+            + _answer_type_bonus(question, item.content)
+            + item.score
+        ),
         reverse=True,
     ):
         normalized = normalize_text(document.content)
         if normalized in seen_content:
             continue
         source_penalty = source_type_counts.get(document.source_type, 0) * 0.03
-        adjusted_score = lexical_score(question, normalized) + document.score - source_penalty
+        adjusted_score = (
+            lexical_score(question, normalized)
+            + _entity_overlap_bonus(question, document)
+            + _answer_type_bonus(question, normalized)
+            + document.score
+            - source_penalty
+        )
         ranked.append(
             RetrievedDocument(
                 source_id=document.source_id,
@@ -109,3 +120,29 @@ def rank_documents(question: str, documents: list[RetrievedDocument], limit: int
         if len(ranked) >= limit:
             break
     return ranked
+
+
+def _entity_overlap_bonus(question: str, document: RetrievedDocument) -> float:
+    entities = [
+        entity.lower()
+        for entity in re.findall(r"\b[A-Z][A-Za-z0-9'-]{2,}(?:\s+[A-Z][A-Za-z0-9'-]{2,})*\b", question)
+        if entity not in {"What", "Who", "Where", "When", "Which", "How", "The"}
+    ]
+    if not entities:
+        return 0.0
+    haystack = f"{document.source_id} {document.content}".lower().replace("_", " ")
+    hits = sum(1 for entity in entities if entity in haystack)
+    return min(1.5, hits * 1.0)
+
+
+def _answer_type_bonus(question: str, content: str) -> float:
+    lowered = question.lower()
+    if "body of water" not in lowered:
+        return 0.0
+    if re.search(
+        r"\b[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+)*\s+"
+        r"(?:Sea|Ocean|Bay|Strait|Reservoir|Lake|River)\b",
+        content,
+    ):
+        return 1.0
+    return 0.0

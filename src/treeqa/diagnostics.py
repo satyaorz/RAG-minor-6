@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
+import sys
 
 from treeqa.backends import build_graph_backend, build_llm_client, build_vector_backend
 from treeqa.config import TreeQASettings
@@ -35,10 +36,26 @@ def run_diagnostics(
 ) -> DiagnosticReport:
     settings = settings or TreeQASettings.from_env()
     report = DiagnosticReport(settings=_settings_summary(settings))
+    report.checks.append(_check_runtime(settings))
     report.checks.append(_check_llm(settings, live_llm_probe))
     report.checks.append(_check_vector(settings))
     report.checks.append(_check_graph(settings))
     return report
+
+
+def _check_runtime(settings: TreeQASettings) -> CheckResult:
+    expected = settings.project_root / ".venv"
+    executable = sys.executable
+    if expected.exists() and not executable.startswith(str(expected)):
+        return CheckResult(
+            name="runtime",
+            ok=True,
+            detail=(
+                f"Running with `{executable}` while repo venv exists at `{expected}`. "
+                "Prefer `.venv/bin/python` or `make` targets to avoid mixed dependencies."
+            ),
+        )
+    return CheckResult(name="runtime", ok=True, detail=f"Python executable: `{executable}`.")
 
 
 def _check_llm(settings: TreeQASettings, live_probe: bool) -> CheckResult:
@@ -90,10 +107,18 @@ def _check_vector(settings: TreeQASettings) -> CheckResult:
                 detail="Configured local vector provider, but the index is empty. Add files under data/documents and run `python -m treeqa.cli ingest`.",
             )
 
+    detail = f"Configured vector provider `{settings.vector_provider}` ({backend.__class__.__name__})."
+    if settings.vector_provider.strip().lower() == "local":
+        model = getattr(backend, "_model", None)
+        if model is None:
+            detail += " Semantic embedding model unavailable; using lexical retrieval fallback."
+        else:
+            detail += " Semantic embedding model loaded."
+
     return CheckResult(
         name="vector",
         ok=True,
-        detail=f"Configured vector provider `{settings.vector_provider}` ({backend.__class__.__name__}).",
+        detail=detail,
     )
 
 
@@ -124,4 +149,6 @@ def _settings_summary(settings: TreeQASettings) -> dict[str, str]:
         "vector_provider": settings.vector_provider,
         "graph_provider": settings.graph_provider,
         "data_dir": settings.data_dir,
+        "embedding_model": settings.embedding_model,
+        "embedding_offline": str(settings.embedding_offline).lower(),
     }
