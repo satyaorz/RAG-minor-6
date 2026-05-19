@@ -181,8 +181,7 @@ class AnswerGenerator:
         wh = wh_match.group(1)
 
         anaphora_re = re.compile(
-            r"\b(that|their|its|this|they|the\s+(?:director|author|writer|producer|actor|"
-            r"actress|composer|singer|creator|founder|person|individual|subject))\b",
+            r"\b(that|their|its|this|they)\b",
             re.IGNORECASE,
         )
 
@@ -466,13 +465,37 @@ class AnswerGenerator:
     def _direct_comparison_final(self, query: str, nodes: list[QueryNode]) -> str | None:
         """Deterministically resolve comparison queries programmatically in Python."""
         lowered = query.lower()
-        if "born" not in lowered and "release" not in lowered and "publish" not in lowered and "premier" not in lowered and "created" not in lowered:
-            return None
-            
         verified_nodes = [n for n in nodes if n.answer and n.status in ("verified", "needs_review")]
         if len(verified_nodes) != 2:
             return None
 
+        # 1. Boolean "same" queries (e.g., "same nationality", "same country")
+        if "same" in lowered and re.search(r"^(are|do|does|is|were|did)\b", lowered):
+            ans1 = self._strip_sources(verified_nodes[0].answer).lower()
+            ans2 = self._strip_sources(verified_nodes[1].answer).lower()
+            
+            ans1_clean = re.sub(r'[^\w\s]', '', ans1)
+            ans2_clean = re.sub(r'[^\w\s]', '', ans2)
+            set1 = set(ans1_clean.split()) - {"the", "a", "an", "of", "and", "in"}
+            set2 = set(ans2_clean.split()) - {"the", "a", "an", "of", "and", "in"}
+            
+            # Simple nationality normalization
+            for s in (set1, set2):
+                if "american" in s: s.update({"united", "states", "usa"})
+                if "canadian" in s: s.add("canada")
+                if "indian" in s: s.add("india")
+                if "british" in s: s.update({"uk", "england", "britain"})
+                if "french" in s: s.add("france")
+                if "german" in s: s.add("germany")
+            
+            is_same = bool(set1 & set2)
+            res = "yes" if is_same else "no"
+            sources = self._node_source_refs(nodes)
+            return self._clean_text(f"{res} Sources: {sources}")
+
+        # 2. Date/age comparison queries
+        if "born" not in lowered and "release" not in lowered and "publish" not in lowered and "premier" not in lowered and "created" not in lowered:
+            return None
         # Determine the comparison direction
         is_earlier = True
         if "later" in lowered or "younger" in lowered:
