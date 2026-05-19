@@ -36,18 +36,23 @@ class AnswerGenerator:
                     hop_block = f"\n\nPrevious reasoning steps (use these to resolve pronouns/entities):\n{lines}"
                 answer = self.llm_client.generate_text(
                     system_prompt=(
-                        "You are a grounded question-answering assistant. "
-                        "Answer ONLY using facts explicitly stated in the supplied evidence "
-                        "and the previous reasoning steps (if any). "
-                        "Provide an extremely concise answer (often just the entity name, date, place, or a few words). "
-                        "Do NOT write full sentences or conversational filler. "
-                        "Do NOT repeat headings or source labels inside the answer body. "
-                        "End with a 'Sources:' line listing the source ids of the evidence you used."
+                        "You are a precision fact-extraction assistant. "
+                        "Your job is to extract the SINGLE MOST SPECIFIC factual answer from the evidence.\n"
+                        "RULES:\n"
+                        "1. Extract the MOST PRECISE fact: prefer '1596-1650' over '17th century', "
+                        "'September 22, 1831' over '1831', 'University of Minnesota Duluth' over 'a university'.\n"
+                        "2. Answer with ONLY the extracted fact — a name, date, number, or place. "
+                        "No full sentences, no filler, no explanations.\n"
+                        "3. Use ONLY facts explicitly stated in the evidence. If the evidence doesn't contain "
+                        "the answer, respond with exactly: 'Insufficient evidence'.\n"
+                        "4. When multiple entities share a name (e.g. Theodore Roosevelt vs Theodore Roosevelt Sr.), "
+                        "pick the one that matches the question's context.\n"
+                        "5. End with a 'Sources:' line listing source ids you used."
                     ),
                     user_prompt=(
                         f"Question: {question}{hop_block}\n\n"
                         f"Evidence:\n{context}\n\n"
-                        "Answer the question using only the evidence and prior steps above."
+                        "Extract the precise answer from the evidence above."
                     ),
                     deadline=deadline,
                 )

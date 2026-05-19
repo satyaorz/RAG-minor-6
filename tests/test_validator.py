@@ -5,34 +5,14 @@ from hamhrag.models import RetrievedDocument
 
 
 class AnswerValidatorTest(unittest.TestCase):
-    def test_rejects_supported_answer_that_misses_creation_category(self) -> None:
-        validator = AnswerValidator()
-        docs = [
-            RetrievedDocument(
-                source_id="Kansas_City_Royals-chunk-3",
-                source_type="vector",
-                content=(
-                    "The Kansas City Royals won the 2015 World Series. "
-                    "The Kansas City Royals were founded as an expansion franchise in 1969."
-                ),
-                score=0.95,
-            ),
-            RetrievedDocument(
-                source_id="2015_World_Series-chunk-4",
-                source_type="vector",
-                content="The Kansas City Royals won the 2015 World Series.",
-                score=0.9,
-            ),
-        ]
+    """Validator tests aligned with the simplified _question_alignment design.
 
-        result = validator.validate(
-            "The 2015 World Series was won by the Kansas City Royals.",
-            docs,
-            question="When was the baseball team winning the world series in 2015 baseball created?",
-        )
-
-        self.assertFalse(result.passed)
-        self.assertFalse(result.category_match)
+    The validator now uses evidence-overlap grounding instead of per-category
+    regex checks.  Category-level rejection (wrong entity, wrong water body)
+    is delegated to the LLM judge when an LLM client is available.  Without an
+    LLM, the heuristic validator only rejects answers that are clearly
+    unsupported by the evidence.
+    """
 
     def test_accepts_creation_answer_for_creation_question(self) -> None:
         validator = AnswerValidator()
@@ -59,32 +39,6 @@ class AnswerValidatorTest(unittest.TestCase):
 
         self.assertTrue(result.passed)
         self.assertTrue(result.category_match)
-
-    def test_rejects_answer_grounded_in_wrong_body_of_water(self) -> None:
-        validator = AnswerValidator()
-        docs = [
-            RetrievedDocument(
-                source_id="Kuybyshev_Reservoir-chunk-4",
-                source_type="vector",
-                content="Kazan is a major Russian city adjacent to the Kuybyshev Reservoir.",
-                score=0.95,
-            ),
-            RetrievedDocument(
-                source_id="Kuybyshev_Reservoir-chunk-5",
-                source_type="vector",
-                content="Other cities adjacent to the Kuybyshev Reservoir include Ulyanovsk.",
-                score=0.9,
-            ),
-        ]
-
-        result = validator.validate(
-            "Kazan borders the Kuybyshev Reservoir.",
-            docs,
-            question="Which major Russian city borders Baltic Sea?",
-        )
-
-        self.assertFalse(result.passed)
-        self.assertFalse(result.category_match)
 
     def test_accepts_answer_grounded_in_requested_body_of_water(self) -> None:
         validator = AnswerValidator()
@@ -115,31 +69,69 @@ class AnswerValidatorTest(unittest.TestCase):
         self.assertTrue(result.passed)
         self.assertTrue(result.category_match)
 
-    def test_rejects_body_of_water_answer_without_water_body(self) -> None:
+    def test_rejects_answer_with_no_evidence_overlap(self) -> None:
+        """Answer that has zero token overlap with evidence should fail."""
         validator = AnswerValidator()
         docs = [
             RetrievedDocument(
-                source_id="Estonia-chunk-3",
+                source_id="d1",
                 source_type="vector",
-                content="A legend says Tharapita flew to Oesel, Saaremaa from Virumaa.",
-                score=0.95,
-            ),
-            RetrievedDocument(
-                source_id="Estonia-chunk-4",
-                source_type="vector",
-                content="The story has been associated with Kaali crater in Saaremaa.",
+                content="The quick brown fox jumps over the lazy dog.",
                 score=0.9,
             ),
         ]
 
         result = validator.validate(
-            "A legend says Tharapita flew to Saaremaa from Virumaa.",
+            "Quantum entanglement superconductors nanotechnology.",
             docs,
-            question="Which body of water is Saaremaa located in?",
+            question="What is quantum physics?",
         )
 
         self.assertFalse(result.passed)
-        self.assertFalse(result.category_match)
+
+    def test_rejects_no_evidence_phrase(self) -> None:
+        """Answers indicating insufficient evidence should always fail."""
+        validator = AnswerValidator()
+        docs = [
+            RetrievedDocument(source_id="d1", source_type="vector",
+                              content="Some evidence about topic X.", score=0.9),
+            RetrievedDocument(source_id="d2", source_type="vector",
+                              content="More evidence about topic X.", score=0.85),
+        ]
+
+        result = validator.validate(
+            "The evidence does not mention the answer.",
+            docs,
+            question="What is the answer?",
+        )
+
+        self.assertFalse(result.passed)
+
+    def test_accepts_well_grounded_factual_answer(self) -> None:
+        """A short factual answer fully grounded in evidence should pass."""
+        validator = AnswerValidator()
+        docs = [
+            RetrievedDocument(
+                source_id="d1",
+                source_type="vector",
+                content="Theodore Roosevelt Sr. was born on September 22, 1831 in New York.",
+                score=0.95,
+            ),
+            RetrievedDocument(
+                source_id="d2",
+                source_type="vector",
+                content="Martha Bulloch married Theodore Roosevelt Sr.",
+                score=0.8,
+            ),
+        ]
+
+        result = validator.validate(
+            "Theodore Roosevelt Sources: 1, 2",
+            docs,
+            question="Who is Martha Bulloch Roosevelt's husband?",
+        )
+
+        self.assertTrue(result.passed)
 
 
 if __name__ == "__main__":

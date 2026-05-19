@@ -321,12 +321,13 @@ class HamhRagPipeline:
         max_restructures: int | None = None,
         cache_lock: Any = None,
     ) -> None:
+        import concurrent.futures
         _cb: ProgressCallback = progress_callback or _noop
         prior_hops = prior_hops or []
         base_question = node.question
         node.hop_context = self._hop_context(prior_hops)
         contextual_question = self._contextualize_question(base_question, prior_hops)
-        retrieval_question = self._enrich_query(contextual_question, prior_hops)
+        base_retrieval_question = self._enrich_query(contextual_question, prior_hops)
 
         if deadline is not None and time.monotonic() > deadline:
             self._mark_timeout(node)
@@ -339,38 +340,102 @@ class HamhRagPipeline:
             if max_restructures is None
             else max(0, max_restructures)
         )
-        skip_restructure = False
-        conflict_attempted = False
-
-        for attempt in range(retry_cap + 1):
+        
+        variants = [base_retrieval_question]
+        if retry_cap > 0:
+            extra_variants = self.corrector.generate_variants(base_retrieval_question, num_variants=retry_cap)
+            for v in extra_variants:
+                if v not in variants:
+                    variants.append(v)
+        
+        node.attempts = len(variants)
+        
+        def _process_variant(retrieval_question: str) -> dict:
+            res = {
+                "question": retrieval_question,
+                "documents": [],
+                "answer": "",
+                "validation": None,
+                "retrieval_trace": None,
+                "skip_restructure": False,
+                "bridge_added": 0,
+                "bridge_query": None,
+            }
             if deadline is not None and time.monotonic() > deadline:
-                self._mark_timeout(node)
-                return
-            node.attempts = attempt + 1
-            retrieval_trace = None
+                return res
+
             retrieve_with_trace = getattr(self.retriever, "retrieve_with_trace", None)
             has_native_trace = callable(retrieve_with_trace) and hasattr(type(self.retriever), "retrieve_with_trace")
+            
             if has_native_trace:
-                node.documents, retrieval_trace = retrieve_with_trace(retrieval_question)
+                res["documents"], res["retrieval_trace"] = retrieve_with_trace(retrieval_question)
             else:
-                node.documents = self.retriever.retrieve(retrieval_question)
-            if not node.documents:
-                node.answer = f"Insufficient evidence to answer: {base_question}"
-                node.validation = ValidationResult(
+                res["documents"] = self.retriever.retrieve(retrieval_question)
+                
+            if not res["documents"]:
+                res["answer"] = "No evidence found."
+                res["validation"] = ValidationResult(
                     passed=False,
                     confidence=0.0,
                     rationale="No evidence found for this sub-question.",
                 )
-                node.status = "needs_review"
-                skip_restructure = True
-                break
-            if retrieval_trace is not None:
-                node.retrieval_route = retrieval_trace.route
-                node.retrieval_reason = retrieval_trace.reason
-                node.retrieval_backends = list(retrieval_trace.backends_used)
-                node.retrieval_latency_ms = retrieval_trace.total_latency_ms
-                node.retrieval_fallback = retrieval_trace.fallback_used
-                node.retrieval_signals = dict(retrieval_trace.signals)
+                res["skip_restructure"] = True
+                return res
+                
+            bridge_query, bridge_docs = self._bridge_director_country_evidence(
+                contextual_question, res["documents"]
+            )
+            if bridge_docs:
+                merge_limit = max(
+                    4,
+                    self.settings.retrieval_top_k + 1,
+                    int(getattr(self.retriever, "top_k", self.settings.retrieval_top_k)),
+                )
+                res["documents"] = rank_documents(
+                    contextual_question,
+                    [*res["documents"], *bridge_docs],
+                    merge_limit,
+                )
+                res["bridge_added"] = len(bridge_docs)
+                res["bridge_query"] = bridge_query
+
+            res["answer"] = self.generator.generate_for_node(
+                contextual_question, res["documents"], prior_hops=prior_hops, deadline=deadline
+            )
+            res["validation"] = self._validate_answer(contextual_question, res["answer"], res["documents"])
+            return res
+
+        best_result = None
+        conflict_attempted = False
+        skip_restructure = False
+        
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(variants)) as executor:
+            future_to_variant = {executor.submit(_process_variant, v): v for v in variants}
+            for future in concurrent.futures.as_completed(future_to_variant):
+                res = future.result()
+                if res["validation"] and res["validation"].passed:
+                    best_result = res
+                    break
+                if best_result is None:
+                    best_result = res
+                elif res["validation"] and best_result["validation"]:
+                    if res["validation"].confidence > best_result["validation"].confidence:
+                        best_result = res
+
+        if best_result:
+            node.documents = best_result["documents"]
+            node.answer = best_result["answer"]
+            node.validation = best_result["validation"]
+            skip_restructure = best_result["skip_restructure"]
+            
+            r_trace = best_result["retrieval_trace"]
+            if r_trace is not None:
+                node.retrieval_route = r_trace.route
+                node.retrieval_reason = r_trace.reason
+                node.retrieval_backends = list(r_trace.backends_used)
+                node.retrieval_latency_ms = r_trace.total_latency_ms
+                node.retrieval_fallback = r_trace.fallback_used
+                node.retrieval_signals = dict(r_trace.signals)
                 _cb(
                     event="node_route",
                     node_id=node.node_id,
@@ -380,36 +445,24 @@ class HamhRagPipeline:
                     fallback=node.retrieval_fallback,
                     latency_ms=round(node.retrieval_latency_ms, 2),
                 )
-            bridge_query, bridge_docs = self._bridge_director_country_evidence(
-                contextual_question, node.documents
-            )
-            if bridge_docs:
-                merge_limit = max(
-                    4,
-                    self.settings.retrieval_top_k + 1,
-                    int(getattr(self.retriever, "top_k", self.settings.retrieval_top_k)),
-                )
-                node.documents = rank_documents(
-                    contextual_question,
-                    [*node.documents, *bridge_docs],
-                    merge_limit,
-                )
+                
+            if best_result["bridge_added"] > 0:
                 if "vector_entity_bridge" not in node.retrieval_backends:
                     node.retrieval_backends.append("vector_entity_bridge")
                 _cb(
                     event="node_bridge",
                     node_id=node.node_id,
-                    query=bridge_query,
-                    added=len(bridge_docs),
+                    query=best_result["bridge_query"],
+                    added=best_result["bridge_added"],
                 )
-            node.answer = self.generator.generate_for_node(
-                contextual_question, node.documents, prior_hops=prior_hops, deadline=deadline
-            )
-            node.validation = self._validate_answer(contextual_question, node.answer, node.documents)
-            node.source_consensus = node.validation.consensus_score
+                
+            if node.validation:
+                node.source_consensus = node.validation.consensus_score
 
             if (
-                node.validation.source_conflict
+                node.validation
+                and not node.validation.passed
+                and node.validation.source_conflict
                 and not conflict_attempted
                 and self.conflict_auditor is not None
             ):
@@ -444,8 +497,8 @@ class HamhRagPipeline:
                         )
                         node.validation = self._validate_answer(contextual_question, node.answer, node.documents)
                         node.source_consensus = node.validation.consensus_score
-            
-            if node.validation.passed:
+
+            if node.validation and node.validation.passed:
                 node.status = "verified"
                 if verified_cache is not None:
                     if cache_lock is not None:
@@ -453,29 +506,21 @@ class HamhRagPipeline:
                             verified_cache[self._cache_key(base_question, prior_hops)] = node.answer
                     else:
                         verified_cache[self._cache_key(base_question, prior_hops)] = node.answer
-                break
-
-            rationale = (node.validation.rationale if node.validation else "").lower()
-            low_signal_failure = (
-                (node.validation is not None and node.validation.confidence <= 0.15)
-                and (
-                    "insufficient evidence" in rationale
-                    or "no evidence" in rationale
-                    or "validation error" in rationale
-                    or "judge failure" in rationale
+            else:
+                rationale = (node.validation.rationale if node.validation else "").lower()
+                low_signal_failure = (
+                    (node.validation is not None and node.validation.confidence <= 0.15)
+                    and (
+                        "insufficient evidence" in rationale
+                        or "no evidence" in rationale
+                        or "validation error" in rationale
+                        or "judge failure" in rationale
+                    )
                 )
-            )
-            if low_signal_failure and attempt >= 1:
-                skip_restructure = True
-                break
-            
-            # Optimization: If category mismatch is the reason for failure, 
-            # don't bother retrying the same question - jump to restructuring.
-            if "[category mismatch]" in rationale:
-                break
-                
-            refined = self.corrector.refine(retrieval_question, node.attempts)
-            retrieval_question = self._safe_refine_query(retrieval_question, refined)
+                if low_signal_failure:
+                    skip_restructure = True
+                if "[category mismatch]" in rationale:
+                    skip_restructure = False
 
         # ART-R Restructuring Loop
         can_restructure = (
@@ -501,7 +546,6 @@ class HamhRagPipeline:
                 node.children = new_sub_nodes
                 node.was_restructured = True
                 node.original_question = base_question
-                # Now resolve this node as a group node
                 self._resolve_tree(
                     node, 
                     prior_hops=prior_hops, 
@@ -521,11 +565,11 @@ class HamhRagPipeline:
             node_id=node.node_id,
             question=base_question,
             status=node.status,
-            answer=self._strip_sources(node.answer),
+            answer=self._strip_sources(node.answer) if node.answer else "",
             attempts=node.attempts,
-            route=node.retrieval_route,
-            backends=node.retrieval_backends,
-            latency_ms=round(node.retrieval_latency_ms, 2))
+            route=getattr(node, "retrieval_route", "unknown"),
+            backends=getattr(node, "retrieval_backends", []),
+            latency_ms=round(getattr(node, "retrieval_latency_ms", 0.0), 2))
 
     # ------------------------------------------------------------------
     # Retrieval helpers
@@ -651,9 +695,9 @@ class HamhRagPipeline:
         lowered = question.lower()
         if lowered.startswith(("how ", "why ", "then ", "after ")):
             return True
-        # Angle-bracket placeholders emitted by the LLM decomposer
-        # e.g. "When was <director> born?" — always a dependent hop
-        if re.search(r"<[^>]+>", question):
+        # Angle/square/curly bracket placeholders emitted by the LLM decomposer
+        # e.g. "When was <director> born?", "What is [husband's name]'s birthday?"
+        if re.search(r"[<\[\{][^>\]\}]+[>\]\}]", question):
             return True
         markers = (
             " it ",

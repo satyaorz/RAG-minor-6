@@ -124,6 +124,20 @@ class QueryDecomposer:
         if result:
             return result
 
+        # --- 7. Possessive chain bridge ---
+        #     "X's ROLE's ATTRIBUTE" (2WikiMultiHopQA)
+        #     "Martha Bulloch Roosevelt's husband's birthday"
+        result = self._decompose_possessive_chain_bridge(query)
+        if result:
+            return result
+
+        # --- 8. Predicate attribution bridge ---
+        #     "X is ROLE of a ENTITY offering/with/having ATTRIBUTE"
+        #     "Lendley C. Black is Chancellor of a university offering how many majors?"
+        result = self._decompose_predicate_attribution_bridge(query)
+        if result:
+            return result
+
         return []
 
     # ------------------------------------------------------------------
@@ -255,7 +269,8 @@ class QueryDecomposer:
 
         _PRED_VERBS = re.compile(
             r"(?<!\w)("
-            r"die[ds]?|died|born|live[sd]?|lived|work[sed]*|worked|"
+            r"die[ds]?|died|born|live[sd]?|lived|spend|spent|sign[ed]*|"
+            r"work[sed]*|worked|have|has|had|offer[sed]*|"
             r"come|came|go|went|study|studied|graduate[sd]?|attend[ed]*|"
             r"direct[ed]*|appear[ed]*|became?|marri[ed]*|retir[ed]*|"
             r"buried|grew?|publish[ed]*|wrot[e]?|wrote|start[ed]*|"
@@ -586,6 +601,104 @@ class QueryDecomposer:
         return [left_q, right_q]
 
     # ------------------------------------------------------------------
+    # Pattern 7: Possessive chain bridge (2WikiMultiHopQA)
+    # ------------------------------------------------------------------
+
+    def _decompose_possessive_chain_bridge(self, query: str) -> list[str]:
+        """
+        Handles "X's ROLE's ATTRIBUTE" questions.
+        e.g. "When is Martha Bulloch Roosevelt's husband's birthday?"
+             "What is the nationality of Frédéric's father's employer?"
+
+        Rule: if the question has a possessive chain ENTITY's ROLE's ATTR,
+        decompose into:
+          Q1 = "Who is ENTITY's ROLE?"
+          Q2 = "Wh-word is that [ROLE]'s ATTR?"
+        """
+        # Strip leading wh-phrase to avoid it bleeding into entity group
+        # e.g. "When is Martha..." -> "Martha..."
+        stripped = re.sub(
+            r"^(?:when|where|what|who|which|how(?:\s+many)?)\s+(?:is|was|are|were|did|does|do)\s+",
+            "",
+            query,
+            flags=re.IGNORECASE,
+        ).strip()
+
+        # Match: ENTITY's ROLE's ATTRIBUTE on the stripped query
+        m = re.search(
+            r"(?P<entity>[A-Z][A-Za-z'\s]+?)'s\s+(?P<role>[a-z]+(?:\s+[a-z]+)?)'s\s+"
+            r"(?P<attr>[\w\s]+?)(?:\?|$)",
+            stripped,
+        )
+        if not m:
+            return []
+
+        entity = m.group("entity").strip()
+        role = m.group("role").strip()
+        attr = m.group("attr").strip().rstrip("? ")
+
+        if not entity or not role or not attr:
+            return []
+
+        # Determine wh-word from original question
+        wh = "what"
+        lowered = query.lower()
+        if re.match(r"when\b", lowered):
+            wh = "when"
+        elif re.match(r"where\b", lowered):
+            wh = "where"
+        elif re.match(r"who\b", lowered):
+            wh = "who"
+        elif re.match(r"which\b", lowered):
+            wh = "which"
+        elif re.match(r"how many\b", lowered):
+            wh = "how many"
+
+        q1 = f"Who is {entity}'s {role}?"
+        q2 = f"{wh.capitalize()} is that {role}'s {attr}?"
+        return [q1, q2]
+
+
+    # ------------------------------------------------------------------
+    # Pattern 8: Predicate attribution bridge (HotPotQA)
+    # ------------------------------------------------------------------
+
+    def _decompose_predicate_attribution_bridge(self, query: str) -> list[str]:
+        """
+        Handles "X is ROLE of a/the ENTITY offering/with ATTRIBUTE" questions.
+        e.g. "Lendley C. Black is Chancellor of a university offering how many majors?"
+        -> Q1: "What university is Lendley C. Black the Chancellor of?"
+        -> Q2: "How many majors does that university offer?"
+        """
+        m = re.match(
+            r"^(?P<person>[A-Z][A-Za-z\s\.]+?)\s+is\s+(?:the\s+)?(?P<role>[\w\s]+?)\s+of\s+"
+            r"(?:a|the|an)\s+(?P<entity>[\w\s]+?)\s+(?:offering|with|having|that\s+has)\s+"
+            r"(?P<attr>.+?)\??$",
+            query,
+            re.IGNORECASE,
+        )
+        if not m:
+            return []
+
+        person = m.group("person").strip()
+        role = m.group("role").strip()
+        entity = m.group("entity").strip()
+        attr = m.group("attr").strip().rstrip("?")
+
+        if not person or not role or not entity or not attr:
+            return []
+
+        # Determine wh-word for Q2 from the attr phrase itself
+        wh_match = re.match(r"(how many|how much|what|who|where|when|which)\b", attr, re.IGNORECASE)
+        wh = wh_match.group(1).lower() if wh_match else "what"
+        # Strip the wh-word from attr if it's there
+        attr_clean = re.sub(r"^(?:how many|how much|what|who|where|when|which)\s+", "", attr, flags=re.IGNORECASE).strip()
+
+        q1 = f"What {entity} is {person} the {role} of?"
+        q2 = f"{wh.capitalize()} {attr_clean} does that {entity} offer?"
+        return [q1, q2]
+
+    # ------------------------------------------------------------------
     # LLM decomposition
     # ------------------------------------------------------------------
 
@@ -593,27 +706,30 @@ class QueryDecomposer:
         if self.llm_client is None:
             return []
         try:
-            payload = self.llm_client.generate_json(
+            text = self.llm_client.generate_text(
                 system_prompt=(
                     "You are a Query Architect. Decompose complex multi-hop questions "
                     "into the SMALLEST NECESSARY set of sub-questions.\n\n"
                     "RULES:\n"
-                    "1. Simple single-document questions → return as-is (1 sub-question).\n"
-                    "2. Split ONLY when finding Entity A is a prerequisite to searching for Entity B.\n"
-                    "3. Multiple attributes of the SAME entity → one combined sub-question.\n"
-                    "4. NEVER use placeholder tokens like <director>, <person>. "
-                    "Use natural pronouns: 'that director', 'they', 'that person'.\n"
-                    "5. Bridge questions ('Where did the director of X die?') ALWAYS need "
-                    "TWO sub-questions: first identify the person, then find the attribute.\n"
-                    "6. Comparison questions ('Were A and B born in the same country?') → "
+                    "1. DO NOT answer the question yourself or resolve entities. ONLY break down the grammatical structure.\n"
+                    "2. Simple single-document questions → return as-is (1 sub-question).\n"
+                    "3. Split ONLY when finding Entity A is a prerequisite to searching for Entity B.\n"
+                    "4. Multiple attributes of the SAME entity → one combined sub-question.\n"
+                    "5. NEVER use placeholder tokens like <director>, <person>. Use natural pronouns: 'that director', 'that person', 'they'.\n"
+                    "6. Bridge questions ('Where did the director of X die?') ALWAYS need "
+                    "TWO sub-questions: first identify the person ('Who is the director of X?'), then find the attribute ('Where did that person die?').\n"
+                    "7. Comparison questions ('Were A and B born in the same country?') → "
                     "TWO parallel sub-questions, one per entity.\n\n"
-                    "Return JSON: {\"sub_questions\": [\"...\", \"...\"]}."
+                    "Return EXACTLY one sub-question per line. Do not include numbers, bullets, or JSON."
                 ),
                 user_prompt=f"Question: {query}",
             )
+            if not text:
+                return []
+            candidates = [line.strip("-*0123456789. \t\"'") for line in text.strip().split("\n")]
+            return self._sanitize_questions(candidates)
         except Exception:
             return []
-        return self._extract_questions(payload)
 
     # ------------------------------------------------------------------
     # Sanitization and extraction helpers

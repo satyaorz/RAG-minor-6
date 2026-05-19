@@ -6,7 +6,7 @@ import unittest
 from hamhrag.config import HamhRagSettings, load_dotenv
 
 
-class TreeQAConfigTest(unittest.TestCase):
+class HamhRagConfigTest(unittest.TestCase):
     def test_load_dotenv_reads_local_file(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             dotenv_path = Path(temp_dir) / ".env"

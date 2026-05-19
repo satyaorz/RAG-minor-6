@@ -155,7 +155,7 @@ class HamhRagPipelineTest(unittest.TestCase):
 
     def test_corrector_called_on_retry(self) -> None:
         corrector = MagicMock()
-        corrector.refine.return_value = "Refined: What is HotpotQA?"
+        corrector.generate_variants.return_value = ["Refined: What is HotpotQA?"]
 
         failing_then_passing_validator = MagicMock()
         failing_then_passing_validator.validate.side_effect = [
@@ -169,7 +169,7 @@ class HamhRagPipelineTest(unittest.TestCase):
         )
         result = pipeline.run("What is HotpotQA?")
 
-        corrector.refine.assert_called_once()
+        corrector.generate_variants.assert_called_once()
         self.assertEqual(result.root.status, "verified")
         self.assertEqual(result.root.attempts, 2)
 
@@ -187,20 +187,23 @@ class HamhRagPipelineTest(unittest.TestCase):
         ]
         restructurer = _stub_restructurer(new_nodes=restructured_nodes)
 
+        corrector = MagicMock()
+        corrector.generate_variants.return_value = ["Variant 1", "Variant 2"]
+
         pipeline = _make_pipeline(
             validator=failing_validator,
             restructurer=restructurer,
+            corrector=corrector,
         )
         
-        # We need to make the validator pass for the new sub-nodes 
-        # so the test terminates nicely.
-        failing_validator.validate.side_effect = [
-            ValidationResult(passed=False, confidence=0.1, rationale="Dead end."), # original leaf fail
-            ValidationResult(passed=False, confidence=0.1, rationale="Dead end."), # retry 1 fail
-            ValidationResult(passed=False, confidence=0.1, rationale="Dead end."), # retry 2 fail
-            ValidationResult(passed=True, confidence=1.0, rationale="Pass A"),      # sub-1 pass
-            ValidationResult(passed=True, confidence=1.0, rationale="Pass B"),      # sub-2 pass
-        ]
+        def validate_mock(*args, **kwargs):
+            question = kwargs.get("question", "")
+            if "Splinter" in question:
+                return ValidationResult(passed=True, confidence=1.0, rationale="Pass")
+            return ValidationResult(passed=False, confidence=0.1, rationale="Dead end.")
+
+        failing_validator.validate.side_effect = validate_mock
+
 
         result = pipeline.run("Complex Question")
 

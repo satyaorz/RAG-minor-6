@@ -14,7 +14,7 @@ from hamhrag.ingest import build_local_indices
 _PATCH_FAISS = patch("hamhrag.ingest._build_faiss_index", return_value=None)
 
 
-class TreeQAIngestTest(unittest.TestCase):
+class HamhRagIngestTest(unittest.TestCase):
     def setUp(self) -> None:
         _PATCH_FAISS.start()
 
@@ -75,7 +75,7 @@ class TreeQAIngestTest(unittest.TestCase):
             (data_dir / "documents").mkdir(parents=True)
             (data_dir / "graph").mkdir(parents=True)
             doc = (
-                "# Overview\n\nTreeQA is a hallucination-aware RAG system.\n\n"
+                "# Overview\n\nHAMH-RAG is a hallucination-aware RAG system.\n\n"
                 "## Retrieval\n\nHybrid retrieval combines vector and graph evidence.\n"
             )
             (data_dir / "documents" / "sample.md").write_text(doc, encoding="utf-8")
@@ -103,7 +103,7 @@ class TreeQAIngestTest(unittest.TestCase):
             (data_dir / "documents").mkdir(parents=True)
             (data_dir / "graph").mkdir(parents=True)
             doc = (
-                "# Overview\n\nTreeQA is a hallucination-aware RAG system.\n\n"
+                "# Overview\n\nHAMH-RAG is a hallucination-aware RAG system.\n\n"
                 "## Retrieval\n\nHybrid retrieval combines vector and graph evidence.\n"
             )
             (data_dir / "documents" / "sample.md").write_text(doc, encoding="utf-8")

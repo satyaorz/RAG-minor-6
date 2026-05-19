@@ -16,7 +16,7 @@ class FakeLLMClient:
         return {}
 
 
-class TreeQADiagnosticsTest(unittest.TestCase):
+class HamhRagDiagnosticsTest(unittest.TestCase):
     def test_diagnostics_succeeds_for_memory_backends(self) -> None:
         settings = HamhRagSettings(
             llm_provider="stub",
