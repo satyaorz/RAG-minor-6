@@ -27,23 +27,37 @@
 Generation Framework with Adaptive Logic-Tree Reasoning}
 
 \author{
-\IEEEauthorblockN{Author Name 1}
-\IEEEauthorblockA{\textit{Dept. of Computer Science \& Engineering}\\
-\textit{University Name}\\
-City, Country\\
-email@domain.edu}
-\and
-\IEEEauthorblockN{Author Name 2}
-\IEEEauthorblockA{\textit{Dept. of Electronics \& Communication Engg.}\\
-\textit{University Name}\\
-City, Country\\
-email@domain.edu}
-\and
-\IEEEauthorblockN{Author Name 3}
-\IEEEauthorblockA{\textit{Dept. of Computer Science \& Engineering}\\
-\textit{University Name}\\
-City, Country\\
-email@domain.edu}
+
+\IEEEauthorblockN{
+\begin{tabular}{cc}
+Dr. Santosh Kumar & Satya Pradhan \\
+\textit{Dept. of Data Science and Artificial Intelligence} &
+\textit{Dept. of Computer Science and Engineering} \\
+\textit{IIIT Naya Raipur} &
+\textit{IIIT Naya Raipur} \\
+Chhattisgarh, India &
+Chhattisgarh, India \\
+santosh@iiitnr.edu.in &
+satya23100@iiitnr.edu.in
+\end{tabular}
+}
+
+\vspace{0.8cm}
+
+\IEEEauthorblockN{
+\begin{tabular}{cc}
+Kuldeep Singh Thakur & Rahul Dhandore \\
+\textit{Dept. of Computer Science and Engineering} &
+\textit{Dept. of Data Science and Artificial Intelligence} \\
+\textit{IIIT Naya Raipur} &
+\textit{IIIT Naya Raipur} \\
+Chhattisgarh, India &
+Chhattisgarh, India \\
+kuldeep23100@iiitnr.edu.in &
+rahuld23102@iiitnr.edu.in
+\end{tabular}
+}
+
 }
 
 \maketitle
@@ -275,9 +289,9 @@ intervals.
 provides an alternative Python-native interface suitable for exploration
 and rapid prototyping, wrapping the same REST API.
 
-\textbf{CLI.} The \texttt{treeqa} console script exposes \texttt{ingest},
-\texttt{run}, \texttt{eval}, and \texttt{benchmark} subcommands for batch
-processing, automated benchmarking, and CI/CD integration.
+\textbf{CLI.} The \texttt{hamhrag} console script exposes \texttt{run},
+\texttt{doctor}, \texttt{ingest}, and \texttt{bench} subcommands for batch
+processing, diagnostics, automated benchmarking, and CI/CD integration.
 
 \subsection{Core Pipeline Layer}
 
@@ -859,6 +873,13 @@ grounding validation that prevents hallucinated intermediate answers
 from propagating, and (3) ART-R restructuring that recovers from
 initially failed evidence retrieval.
 
+\begin{figure}[!t]
+  \centering
+  \includegraphics[width=\columnwidth]{hamhrag_f1_comparison.png}
+  \caption{Token F1 Score comparison on HotpotQA and MuSiQue benchmarks. HAMH-RAG consistently outperforms baselines on both datasets.}
+  \label{fig:f1}
+\end{figure}
+
 \subsection{Ablation Study}
 
 Table~\ref{tab:ablation} presents ablation results on HotpotQA,
@@ -886,6 +907,35 @@ Standard RAG (baseline)           & 34.2 & 44.6 \\
 Each component contributes positively. Hop context propagation alone
 improves F1 by 1.7 points by resolving anaphoric references across hops.
 ART-R adds a further 0.9 F1 points by recovering failing nodes.
+
+\subsection{Comparative Study of Framework Capabilities}
+\label{sec:comparative}
+
+To provide a holistic view of how HAMH-RAG advances the state of the art, Table~\ref{tab:comparison} compares its architectural capabilities against prominent existing RAG and multi-hop QA frameworks.
+
+\begin{table*}[!t]
+\caption{Comparative Feature Analysis of Multi-Hop RAG Frameworks}
+\label{tab:comparison}
+\centering
+\scriptsize
+\setlength{\tabcolsep}{3.5pt}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{@{}lccccc@{}}
+\toprule
+\textbf{Framework} & \textbf{\shortstack{Dynamic\\Logic-Tree}} & \textbf{\shortstack{Per-Node\\Validation}} & \textbf{\shortstack{Self-Healing\\(Restructuring)}} & \textbf{\shortstack{Pre-Retrieval\\Routing}} & \textbf{\shortstack{Graph+Vector\\Hybrid}} \\
+\midrule
+Standard RAG \cite{lewis2020retrieval} & Unsupported & Unsupported & Unsupported & Unsupported & Unsupported \\
+ReAct \cite{yao2023react} & Not Native (Linear Interleaved) & Unsupported & Implicit (Via LLM prompts) & Unsupported & Unsupported \\
+IRCoT \cite{trivedi2023interleaving} & Not Native (Linear Interleaved) & Unsupported & Unsupported & Unsupported & Unsupported \\
+CRAG \cite{yan2024corrective} & Unsupported & Explicit (Post-retrieval evaluator) & Implicit (Web search fallback) & Unsupported & Unsupported \\
+TreeQA \cite{zhang2025treeqa} & Not Native (Static Semantic Space) & Unsupported & Unsupported & Unsupported & Unsupported \\
+\textbf{HAMH-RAG (Ours)} & \textbf{Explicit (Parallelizable)} & \textbf{Explicit (3-Stage Checker)} & \textbf{Explicit (ART-R mutation)} & \textbf{Explicit (Heuristic Scorer)} & \textbf{Explicit (RRF Fusion)} \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+Unlike ReAct or IRCoT which rely on linear, interleaved reasoning that can silently drift into hallucination, HAMH-RAG explicitly isolates each reasoning step into a tree node. While CRAG introduces an evaluator to trigger fallback searches, it does not decompose queries into multi-hop structures. TreeQA introduces logic-tree constraints but operates on a static semantic space without mid-reasoning grounding validation or self-healing. HAMH-RAG is the first to combine dynamic logic-tree decomposition with a strict per-node validation firewall and structural ART-R self-healing, ensuring that hallucinated intermediate conclusions are detected and corrected before they can corrupt downstream retrieval.
+
 
 % ============================================================
 \section{Performance Evaluation}
@@ -920,6 +970,13 @@ latency of \texttt{graph\_first}-with-fallback from 38~ms to 21~ms
 (a \textbf{45\% reduction}), matching \texttt{hybrid\_parallel}
 while routing 70\% of queries that would have triggered sequential
 fallback.
+
+\begin{figure}[!t]
+  \centering
+  \includegraphics[width=\columnwidth]{hamhrag_latency_chart.png}
+  \caption{Retrieval Latency (P50 and P90) across routing strategies, illustrating the 45\% reduction in median latency for predictive parallel fallback.}
+  \label{fig:latency_chart}
+\end{figure}
 
 \subsection{End-to-End Pipeline Throughput}
 

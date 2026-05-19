@@ -1,0 +1,56 @@
+digraph {
+	nodesep=0.8 rankdir=TB ranksep=0.8 splines=ortho
+	node [fontname=Arial fontsize=12 penwidth=1.5]
+	edge [fontname=Arial fontsize=10 penwidth=1.5]
+	Data [label=Data fillcolor="#bdf2c3" height=0.8 shape=box style="filled,rounded" width=1.2]
+	UserQuery [label="User Query" fillcolor="#bdf2c3" height=0.6 shape=box style="filled,rounded" width=1.5]
+	SubQ [label="Sub Q tree" fillcolor="#bdf2c3" height=0.6 shape=box style="filled,rounded" width=1.5]
+	Final [label="Final
+Answer" fillcolor="#bdf2c3" height=0.6 shape=box style="filled,rounded" width=1.2]
+	AnsVal [label="Ans
+validation
+and progating
+ans to root" fillcolor="#fbc0c2" height=0.8 shape=box style="filled,rounded" width=1.5]
+	Combined [label=combined fillcolor="#fbc0c2" height=0.8 shape=diamond style=filled width=1.5]
+	Semantic [label="semantic leg" fillcolor="#ffeaa7" height=0.8 shape=diamond style=filled width=1.5]
+	Lexical [label="lexical
+leg" fillcolor="#ffeaa7" height=0.8 shape=diamond style=filled width=1.5]
+	Embedding [label=Embedding fillcolor="#ffeaa7" height=0.6 shape=box style="filled,rounded" width=1.5]
+	VectorDB [label="" fillcolor="#bdf2c3" height=1.2 shape=cylinder style=filled width=1.2]
+	GraphDB [label="" fillcolor="#bdf2c3" height=1.0 shape=cylinder style=filled width=1.2]
+	split_data [label="" shape=point width=0]
+	{
+		rank=same
+		Data
+		Embedding
+		VectorDB
+	}
+	{
+		rank=same
+		SubQ
+		Semantic
+		Lexical
+	}
+	Data -> split_data [label="Divided
+into chunks"]
+	split_data -> Embedding
+	split_data -> GraphDB [label="indexed,
+graph facts"]
+	Embedding -> VectorDB [label="Stored
+in Vector
+DB"]
+	UserQuery -> SubQ [label=LLM]
+	SubQ -> Lexical [label="token
+matching"]
+	SubQ -> Semantic [label=encoding]
+	GraphDB -> Lexical [label="idf
+weighted
+tokens"]
+	VectorDB -> Semantic [label="Top-k
+similar passages/vectors"]
+	Lexical -> Combined
+	Semantic -> Combined
+	Combined -> AnsVal [label=LLM]
+	AnsVal -> SubQ [label="Feedback loop"]
+	AnsVal -> Final
+}

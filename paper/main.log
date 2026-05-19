@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.25 (TeX Live 2023) (preloaded format=pdflatex 2026.5.17)  19 MAY 2026 11:29
+This is pdfTeX, Version 3.141592653-2.6-1.40.25 (TeX Live 2023) (preloaded format=pdflatex 2026.5.17)  20 MAY 2026 02:23
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -353,50 +353,63 @@ Package epstopdf-base Info: Redefining graphics rule for `.eps' on input line 4
 File: epstopdf-sys.cfg 2010/07/13 v1.3 Configuration of (r)epstopdf for TeX Liv
 e
 ))
-LaTeX Font Info:    Trying to load font information for T1+pcr on input line 69
+LaTeX Font Info:    Calculating math sizes for size <11> on input line 63.
+LaTeX Font Info:    Trying to load font information for U+msa on input line 63.
+
+
+(/usr/share/texlive/texmf-dist/tex/latex/amsfonts/umsa.fd
+File: umsa.fd 2013/01/14 v3.01 AMS symbols A
+)
+LaTeX Font Info:    Trying to load font information for U+msb on input line 63.
+
+
+(/usr/share/texlive/texmf-dist/tex/latex/amsfonts/umsb.fd
+File: umsb.fd 2013/01/14 v3.01 AMS symbols B
+)
+LaTeX Font Info:    Trying to load font information for T1+pcr on input line 83
 .
 
 (/usr/share/texlive/texmf-dist/tex/latex/psnfss/t1pcr.fd
 File: t1pcr.fd 2001/06/04 font definitions for T1/pcr.
 )
-Underfull \hbox (badness 10000) in paragraph at lines 52--81
+Underfull \hbox (badness 10000) in paragraph at lines 66--95
 []\T1/ptm/b/it/9 Abstract\T1/ptm/b/n/9 ---Retrieval-Augmented Gen-er-a-tion (RA
 G) has
  []
 
 
-Underfull \hbox (badness 3039) in paragraph at lines 52--81
+Underfull \hbox (badness 3039) in paragraph at lines 66--95
 \T1/ptm/b/n/9 emerged as a dom-i-nant paradigm for ground-ing Large
  []
 
 
-Underfull \hbox (badness 2875) in paragraph at lines 52--81
+Underfull \hbox (badness 2875) in paragraph at lines 66--95
 \T1/ptm/b/n/9 (1) the flat re-trieval strat-egy can-not chain in-ter-me-di-ate
  []
 
 
-Underfull \hbox (badness 2762) in paragraph at lines 52--81
+Underfull \hbox (badness 2762) in paragraph at lines 66--95
 \T1/ptm/b/n/9 Multi-Hop Retrieval-Augmented Gen-er-a-tion), a frame-work
  []
 
 
-Underfull \hbox (badness 4954) in paragraph at lines 52--81
+Underfull \hbox (badness 4954) in paragraph at lines 66--95
 \T1/ptm/b/n/9 of sub-questions, re-solves each leaf node in-de-pen-dently
  []
 
 
-Underfull \hbox (badness 1577) in paragraph at lines 52--81
+Underfull \hbox (badness 1577) in paragraph at lines 66--95
 \T1/ptm/b/n/9 ground-ing val-i-da-tion at ev-ery tree node be-fore syn-the-sis.
 
  []
 
 
-Underfull \hbox (badness 3895) in paragraph at lines 52--81
+Underfull \hbox (badness 3895) in paragraph at lines 66--95
 \T1/ptm/b/n/9 (ART-R): when a sub-node fails val-i-da-tion, the sys-tem
  []
 
 
-Underfull \hbox (badness 2073) in paragraph at lines 52--81
+Underfull \hbox (badness 2073) in paragraph at lines 66--95
 \T1/ptm/b/n/9 (SSE) stream-ing, a Stream-lit dash-board, a FAISS-backed
  []
 
@@ -408,244 +421,253 @@ Underfull \vbox (badness 10000) has occurred while \output is active []
 
 
 ]
-Underfull \hbox (badness 5077) in paragraph at lines 126--130
+Underfull \hbox (badness 5077) in paragraph at lines 140--144
 \T1/ptm/m/n/10 agent trans-forms any in-put query into a typed
  []
 
-LaTeX Font Info:    Trying to load font information for U+msa on input line 134
-.
-(/usr/share/texlive/texmf-dist/tex/latex/amsfonts/umsa.fd
-File: umsa.fd 2013/01/14 v3.01 AMS symbols A
-)
-LaTeX Font Info:    Trying to load font information for U+msb on input line 134
-.
 
-(/usr/share/texlive/texmf-dist/tex/latex/amsfonts/umsb.fd
-File: umsb.fd 2013/01/14 v3.01 AMS symbols B
-)
-Underfull \hbox (badness 10000) in paragraph at lines 131--135
+Underfull \hbox (badness 10000) in paragraph at lines 145--149
 []\T1/ptm/b/n/10 Hybrid Re-trieval with Adap-tive Rout-ing. \T1/ptm/m/n/10 A
  []
 
 
-Underfull \hbox (badness 1824) in paragraph at lines 131--135
+Underfull \hbox (badness 1824) in paragraph at lines 145--149
 \T1/pcr/m/n/10 QueryRouter \T1/ptm/m/n/10 scores each sub-question on three
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 136--140
+Underfull \hbox (badness 10000) in paragraph at lines 150--154
 []\T1/ptm/b/n/10 Multi-Stage Hal-lu-ci-na-tion De-tec-tion. \T1/ptm/m/n/10 An
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 136--140
+Underfull \hbox (badness 10000) in paragraph at lines 150--154
 \T1/pcr/m/n/10 AnswerValidator \T1/ptm/m/n/10 com-bines lex-i-cal over-lap
  []
 
 
-Underfull \hbox (badness 2875) in paragraph at lines 136--140
+Underfull \hbox (badness 2875) in paragraph at lines 150--154
 \T1/ptm/m/n/10 con-fi-dence, cross-source con-sen-sus scor-ing, and a
  []
 
 
-Underfull \hbox (badness 1748) in paragraph at lines 136--140
+Underfull \hbox (badness 1748) in paragraph at lines 150--154
 \T1/ptm/m/n/10 con-sol-i-dated LLM judge to de-tect un-sup-ported or
  []
 
 [2]
-<hamhrag_architecture.png, id=22, 246.6816pt x 246.6816pt>
+<hamhrag_architecture.png, id=22, 824.07875pt x 1407.2575pt>
 File: hamhrag_architecture.png Graphic file (type png)
 <use hamhrag_architecture.png>
-Package pdftex.def Info: hamhrag_architecture.png  used on input line 255.
-(pdftex.def)             Requested size: 474.71906pt x 474.76378pt.
+Package pdftex.def Info: hamhrag_architecture.png  used on input line 269.
+(pdftex.def)             Requested size: 474.71906pt x 810.6699pt.
 
-Underfull \hbox (badness 1931) in paragraph at lines 267--273
+
+LaTeX Warning: Float too large for page by 171.00188pt on input line 275.
+
+
+Underfull \hbox (badness 1931) in paragraph at lines 281--287
 \T1/ptm/m/n/10 reasoning-tree vi-su-al-iza-tion. Long-running queries stream
  []
 
 
-Underfull \hbox (badness 4621) in paragraph at lines 299--301
+Underfull \hbox (badness 4621) in paragraph at lines 313--315
 []\T1/ptm/b/n/10 TreeRestructurer \T1/ptm/m/n/10 + \T1/ptm/b/n/10 Con-flic-tAu-
 di-tor\T1/ptm/m/n/10 : ART-R self-
  []
 
 
-Underfull \hbox (badness 2460) in paragraph at lines 305--310
+Underfull \hbox (badness 2460) in paragraph at lines 319--324
 \T1/ptm/m/n/10 each sub-question with-out call-ing an LLM, rout-ing to
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 315--320
+Underfull \hbox (badness 10000) in paragraph at lines 329--334
 []\T1/ptm/b/n/10 Vector In-dex. \T1/ptm/m/n/10 Doc-u-ments in \T1/pcr/m/n/10 da
 ta/documents/
  []
 
 
-Underfull \hbox (badness 6542) in paragraph at lines 315--320
+Underfull \hbox (badness 6542) in paragraph at lines 329--334
 \T1/ptm/m/n/10 are chun-ked into $\OMS/cmsy/m/n/10 ^^T \OT1/cmr/m/n/10 300$\T1/
 ptm/m/n/10 -character sentence-boundary
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 315--320
+Underfull \hbox (badness 10000) in paragraph at lines 329--334
 \T1/ptm/m/n/10 seg-ments with one sen-tence of over-lap, en-coded
  []
 
 
-Underfull \hbox (badness 6708) in paragraph at lines 315--320
+Underfull \hbox (badness 6708) in paragraph at lines 329--334
 \T1/ptm/m/n/10 with \T1/pcr/m/n/10 all-MiniLM-L6-v2\T1/ptm/m/n/10 , and stored 
 as a FAISS
  []
 
 
-Underfull \hbox (badness 4303) in paragraph at lines 315--320
+Underfull \hbox (badness 4303) in paragraph at lines 329--334
 \T1/pcr/m/n/10 IndexFlatIP \T1/ptm/m/n/10 in-dex plus a JSON meta-data side-car
 .
  []
 
 
-Overfull \hbox (20.66951pt too wide) detected at line 346
+Overfull \hbox (20.66951pt too wide) detected at line 360
 []\OMS/cmsy/m/n/10 T\OT1/cmr/m/n/10 (\OML/cmm/m/it/10 q\OT1/cmr/m/n/10 ) = [](\
 OML/cmm/m/it/10 q\OT1/cmr/m/n/10 ) = []
  []
 
 
-Underfull \hbox (badness 5036) in paragraph at lines 364--365
+Underfull \hbox (badness 5036) in paragraph at lines 378--379
  \T1/ptm/m/it/10 1) Heuris-tic De-com-po-si-tion Pat-terns: [][] \T1/ptm/m/n/10
  Three domain-
  []
 
 [3]
-Underfull \hbox (badness 10000) in paragraph at lines 403--406
+Underfull \hbox (badness 10000) in paragraph at lines 417--420
 [] []\T1/ptm/b/n/10 parallel $\OMS/cmsy/m/n/10 8\OML/cmm/m/it/10 c \OMS/cmsy/m/
 n/10 2 []$\T1/ptm/m/n/10 :
  []
 
-[4 <./hamhrag_architecture.png>]
-Overfull \hbox (11.18066pt too wide) detected at line 482
+
+Overfull \hbox (11.18066pt too wide) detected at line 496
 []
  []
 
-<hamhrag_query_router.png, id=30, 246.6816pt x 246.6816pt>
+<hamhrag_query_router.png, id=28, 246.6816pt x 246.6816pt>
 File: hamhrag_query_router.png Graphic file (type png)
 <use hamhrag_query_router.png>
-Package pdftex.def Info: hamhrag_query_router.png  used on input line 492.
+Package pdftex.def Info: hamhrag_query_router.png  used on input line 506.
 (pdftex.def)             Requested size: 252.0pt x 252.00711pt.
-[5 <./hamhrag_query_router.png>]
-Underfull \hbox (badness 10000) in paragraph at lines 550--553
+[4]
+Underfull \hbox (badness 10000) in paragraph at lines 564--567
 []$\OML/cmm/m/it/10 b[]\OT1/cmr/m/n/10 (\OML/cmm/m/it/10 q; d\OT1/cmr/m/n/10 ) 
 = 1\OML/cmm/m/it/10 :\OT1/cmr/m/n/10 0$ \T1/ptm/m/n/10 if the ques-tion asks ab
 out
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 550--553
+Underfull \hbox (badness 10000) in paragraph at lines 564--567
 \T1/ptm/m/n/10 a body of wa-ter and the doc-u-ment con-tains
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 550--553
+Underfull \hbox (badness 10000) in paragraph at lines 564--567
 \T1/ptm/m/n/10 a rec-og-nized water-body proper noun (pat-tern:
  []
 
-<hamhrag_validation.png, id=37, 246.6816pt x 246.6816pt>
+<hamhrag_validation.png, id=34, 246.6816pt x 246.6816pt>
 File: hamhrag_validation.png Graphic file (type png)
 <use hamhrag_validation.png>
-Package pdftex.def Info: hamhrag_validation.png  used on input line 559.
+Package pdftex.def Info: hamhrag_validation.png  used on input line 573.
 (pdftex.def)             Requested size: 252.0pt x 252.00711pt.
-<hamhrag_artr_loop.png, id=38, 246.6816pt x 246.6816pt>
+<hamhrag_artr_loop.png, id=35, 246.6816pt x 246.6816pt>
 File: hamhrag_artr_loop.png Graphic file (type png)
 <use hamhrag_artr_loop.png>
-Package pdftex.def Info: hamhrag_artr_loop.png  used on input line 611.
+Package pdftex.def Info: hamhrag_artr_loop.png  used on input line 625.
 (pdftex.def)             Requested size: 252.0pt x 252.00711pt.
 
-Overfull \hbox (69.74431pt too wide) detected at line 640
+Overfull \hbox (69.74431pt too wide) detected at line 654
 [][] \OT1/cmr/m/n/10 = \OMS/cmsy/m/n/10 :[]  ^  [] \OML/cmm/m/it/10 < []  \OMS/
 cmsy/m/n/10 ^  [] \OML/cmm/m/it/10 > t[] \OT1/cmr/m/n/10 + 2[]
  []
 
-[6 <./hamhrag_validation.png> <./hamhrag_artr_loop.png>]
-Overfull \hbox (18.52539pt too wide) in paragraph at lines 672--686
+
+Overfull \hbox (18.52539pt too wide) in paragraph at lines 686--700
  [][] 
  []
 
 
-Underfull \hbox (badness 4193) in paragraph at lines 707--713
+Underfull \hbox (badness 4193) in paragraph at lines 721--727
 \T1/ptm/m/n/10 model en-codes all new chunks (in-cre-men-tal: skip-ping
  []
 
-
-Underfull \hbox (badness 5893) in paragraph at lines 716--725
+[5]
+Underfull \hbox (badness 5893) in paragraph at lines 730--739
 []\T1/ptm/m/n/10 The \T1/pcr/m/n/10 OpenAICompatibleLLMClient \T1/ptm/m/n/10 co
 m-mu-ni-cates
  []
 
 
-Underfull \hbox (badness 6412) in paragraph at lines 716--725
+Underfull \hbox (badness 6412) in paragraph at lines 730--739
 \T1/ptm/m/n/10 pli-cates iden-ti-cal \T1/pcr/m/n/10 (system_prompt, user_prompt
 )
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 754--760
+Underfull \hbox (badness 10000) in paragraph at lines 768--774
 []\T1/ptm/m/n/10 Streaming re-sponses use the SSE pro-to-col
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 754--760
+Underfull \hbox (badness 10000) in paragraph at lines 768--774
 \T1/ptm/m/n/10 (\T1/pcr/m/n/10 text/event-stream\T1/ptm/m/n/10 ) with a \T1/pcr
 /m/n/10 threading.Queue
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 754--760
+Underfull \hbox (badness 10000) in paragraph at lines 768--774
 \T1/ptm/m/n/10 bridge be-tween the syn-chronous pipeline thread
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 754--760
+Underfull \hbox (badness 10000) in paragraph at lines 768--774
 \T1/ptm/m/n/10 and the async gen-er-a-tor. Events in-clude \T1/pcr/m/n/10 start
 \T1/ptm/m/n/10 ,
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 754--760
+Underfull \hbox (badness 10000) in paragraph at lines 768--774
 \T1/pcr/m/n/10 node_restructure\T1/ptm/m/n/10 , \T1/pcr/m/n/10 tree_retry\T1/pt
 m/m/n/10 , and \T1/pcr/m/n/10 result\T1/ptm/m/n/10 ,
  []
 
-[7]
-Overfull \hbox (22.87518pt too wide) in paragraph at lines 836--853
+
+Overfull \hbox (22.87518pt too wide) in paragraph at lines 850--867
  [][] 
  []
 
-[8]
-Underfull \hbox (badness 1688) in paragraph at lines 1018--1022
+<hamhrag_f1_comparison.png, id=40, 498.663pt x 280.8894pt>
+File: hamhrag_f1_comparison.png Graphic file (type png)
+<use hamhrag_f1_comparison.png>
+Package pdftex.def Info: hamhrag_f1_comparison.png  used on input line 878.
+(pdftex.def)             Requested size: 252.0pt x 141.94875pt.
+[6]
+Overfull \hbox (13.97089pt too wide) in paragraph at lines 923--935
+ [][] 
+ []
+
+<hamhrag_latency_chart.png, id=45, 497.2176pt x 280.6485pt>
+File: hamhrag_latency_chart.png Graphic file (type png)
+<use hamhrag_latency_chart.png>
+Package pdftex.def Info: hamhrag_latency_chart.png  used on input line 976.
+(pdftex.def)             Requested size: 252.0pt x 142.23811pt.
+
+Underfull \hbox (badness 1688) in paragraph at lines 1075--1079
 []\T1/ptm/b/n/10 Evaluation Cor-pus De-pen-dence. \T1/ptm/m/n/10 Qual-ity of re
 -trieval
  []
 
 
-Underfull \hbox (badness 1694) in paragraph at lines 1018--1022
+Underfull \hbox (badness 1694) in paragraph at lines 1075--1079
 \T1/ptm/m/n/10 is bounded by the in-dexed cor-pus. Ques-tions re-quir-ing
  []
 
-
-Underfull \hbox (badness 10000) in paragraph at lines 1037--1041
+[7]
+Underfull \hbox (badness 10000) in paragraph at lines 1094--1098
 []\T1/ptm/b/n/10 Multi-Level Re-struc-tur-ing. \T1/ptm/m/n/10 Lift-ing the
  []
 
 
-Underfull \hbox (badness 7685) in paragraph at lines 1037--1041
+Underfull \hbox (badness 7685) in paragraph at lines 1094--1098
 \T1/pcr/m/n/10 max_restructures \T1/ptm/m/n/10 cap and adding cycle-detection
  []
 
 
-Underfull \hbox (badness 2970) in paragraph at lines 1080--1084
+Underfull \hbox (badness 2970) in paragraph at lines 1137--1141
 []\T1/ptm/m/n/10 HAMH-RAG demon-strates that ex-plicit reasoning-tree
  []
 
-[9] (./main.bbl)
+(./main.bbl [8])
 
 ** Conference Paper **
 Before submitting the final camera ready copy, remember to:
@@ -657,38 +679,42 @@ Before submitting the final camera ready copy, remember to:
  uses only Type 1 fonts and that every step in the generation
  process uses the appropriate paper size.
 
-[10] (./main.aux) ) 
+[9
+
+] [10 <./hamhrag_architecture.png>] [11 <./hamhrag_query_router.png> <./hamhrag
+_validation.png> <./hamhrag_artr_loop.png> <./hamhrag_f1_comparison.png> <./ham
+hrag_latency_chart.png>] (./main.aux) ) 
 Here is how much of TeX's memory you used:
- 5010 strings out of 477985
- 76534 string characters out of 5839380
- 1874388 words of memory out of 6000000
- 25118 multiletter control sequences out of 15000+600000
- 644813 words of font info for 171 fonts, out of 8000000 for 9000
+ 5053 strings out of 477985
+ 77365 string characters out of 5839380
+ 1878388 words of memory out of 6000000
+ 25157 multiletter control sequences out of 15000+600000
+ 649891 words of font info for 185 fonts, out of 8000000 for 9000
  14 hyphenation exceptions out of 8191
- 57i,16n,62p,430b,626s stack positions out of 10000i,1000n,20000p,200000b,200000s
-</usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/c
-m/cmbx10.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmex
-10.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi10.pfb
-></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi5.pfb></usr/
-share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi7.pfb></usr/share/t
-exlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi8.pfb></usr/share/texlive/
-texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb></usr/share/texlive/texmf-d
-ist/fonts/type1/public/amsfonts/cm/cmr7.pfb></usr/share/texlive/texmf-dist/font
-s/type1/public/amsfonts/cm/cmr8.pfb></usr/share/texlive/texmf-dist/fonts/type1/
-public/amsfonts/cm/cmr9.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/a
-msfonts/cm/cmsy10.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfont
-s/cm/cmsy7.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cm
-sy8.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/symbols/msbm
-10.pfb></usr/share/texlive/texmf-dist/fonts/type1/urw/courier/ucrb8a.pfb></usr/
-share/texlive/texmf-dist/fonts/type1/urw/courier/ucrr8a.pfb></usr/share/texlive
-/texmf-dist/fonts/type1/urw/times/utmb8a.pfb></usr/share/texlive/texmf-dist/fon
-ts/type1/urw/times/utmbi8a.pfb></usr/share/texlive/texmf-dist/fonts/type1/urw/t
-imes/utmr8a.pfb></usr/share/texlive/texmf-dist/fonts/type1/urw/times/utmri8a.pf
-b>
-Output written on main.pdf (10 pages, 2700721 bytes).
+ 57i,16n,62p,738b,626s stack positions out of 10000i,1000n,20000p,200000b,200000s
+</usr/share/texlive/texmf-dist/fonts/typ
+e1/public/amsfonts/cm/cmbx10.pfb></usr/share/texlive/texmf-dist/fonts/type1/pub
+lic/amsfonts/cm/cmex10.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/am
+sfonts/cm/cmmi10.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts
+/cm/cmmi5.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmm
+i7.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi8.pfb>
+</usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb></usr/s
+hare/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmr7.pfb></usr/share/tex
+live/texmf-dist/fonts/type1/public/amsfonts/cm/cmr8.pfb></usr/share/texlive/tex
+mf-dist/fonts/type1/public/amsfonts/cm/cmr9.pfb></usr/share/texlive/texmf-dist/
+fonts/type1/public/amsfonts/cm/cmsy10.pfb></usr/share/texlive/texmf-dist/fonts/
+type1/public/amsfonts/cm/cmsy7.pfb></usr/share/texlive/texmf-dist/fonts/type1/p
+ublic/amsfonts/cm/cmsy8.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/a
+msfonts/symbols/msbm10.pfb></usr/share/texlive/texmf-dist/fonts/type1/urw/couri
+er/ucrb8a.pfb></usr/share/texlive/texmf-dist/fonts/type1/urw/courier/ucrr8a.pfb
+></usr/share/texlive/texmf-dist/fonts/type1/urw/times/utmb8a.pfb></usr/share/te
+xlive/texmf-dist/fonts/type1/urw/times/utmbi8a.pfb></usr/share/texlive/texmf-di
+st/fonts/type1/urw/times/utmr8a.pfb></usr/share/texlive/texmf-dist/fonts/type1/
+urw/times/utmri8a.pfb>
+Output written on main.pdf (11 pages, 2322205 bytes).
 PDF statistics:
- 142 PDF objects out of 1000 (max. 8388607)
- 85 compressed objects within 1 object stream
+ 151 PDF objects out of 1000 (max. 8388607)
+ 88 compressed objects within 1 object stream
  0 named destinations out of 1000 (max. 500000)
- 21 words of extra memory for PDF output out of 10000 (max. 10000000)
+ 31 words of extra memory for PDF output out of 10000 (max. 10000000)
 
