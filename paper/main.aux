@@ -1,0 +1,156 @@
+\relax 
+\citation{gao2023retrieval}
+\citation{lewis2020retrieval}
+\citation{min2019discrete,press2023measuring}
+\citation{trivedi2023interleaving,yao2023react}
+\@writefile{toc}{\contentsline {section}{\numberline {I}Introduction}{1}{}\protected@file@percent }
+\newlabel{sec:intro}{{I}{1}}
+\citation{lewis2020retrieval}
+\citation{shi2023replug}
+\citation{jiang2023active}
+\citation{yan2024corrective}
+\citation{yang2018hotpotqa}
+\citation{trivedi2022musique}
+\citation{min2019discrete}
+\citation{press2023measuring}
+\citation{wei2022chain}
+\citation{trivedi2023interleaving}
+\citation{zhang2025treeqa}
+\citation{edge2024local}
+\citation{neo4j2020graph}
+\citation{cormack2009reciprocal}
+\citation{reimers2019sentence}
+\citation{johnson2019billion}
+\citation{wang2022self}
+\citation{yao2023react}
+\@writefile{toc}{\contentsline {section}{\numberline {II}Related Work}{2}{}\protected@file@percent }
+\newlabel{sec:related}{{II}{2}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {II-A}}Retrieval-Augmented Generation}{2}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {II-B}}Multi-Hop Question Answering}{2}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {II-C}}TreeQA and Logic-Tree Reasoning for RAG}{2}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {II-D}}Knowledge Graph-Enhanced Retrieval}{2}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {II-E}}Hybrid Search and Ranking}{2}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {II-F}}Hallucination Mitigation}{2}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {III}System Architecture}{3}{}\protected@file@percent }
+\newlabel{sec:arch}{{III}{3}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {III-A}}Interface Layer}{3}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {III-B}}Core Pipeline Layer}{3}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {III-C}}Retrieval Routing Layer}{3}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {III-D}}Data Layer}{3}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {IV}Methodology}{3}{}\protected@file@percent }
+\newlabel{sec:method}{{IV}{3}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {IV-A}}Query Decomposition}{3}{}\protected@file@percent }
+\newlabel{sec:decomp}{{\mbox  {IV-A}}{3}}
+\newlabel{eq:decompose}{{1}{3}}
+\newlabel{sec:heuristic}{{\mbox  {IV-A}1}{3}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {\mbox  {IV-A}1}Heuristic Decomposition Patterns}{3}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {IV-B}}Tree Resolution and Multi-Hop Chaining}{3}{}\protected@file@percent }
+\newlabel{sec:resolve}{{\mbox  {IV-B}}{3}}
+\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces HAMH-RAG end-to-end system architecture. Four horizontal layers show the Interface Layer, Core Pipeline (with self-healing ART-R loop), Adaptive Query Router (four routing strategies + RRF fusion), and the Data Layer (FAISS index, graph facts, document corpus).}}{4}{}\protected@file@percent }
+\newlabel{fig:arch}{{1}{4}}
+\newlabel{eq:enrichment}{{2}{4}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {IV-C}}Hybrid Retrieval and Adaptive Query Routing}{4}{}\protected@file@percent }
+\newlabel{sec:router}{{\mbox  {IV-C}}{4}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {\mbox  {IV-C}1}Signal Computation}{4}{}\protected@file@percent }
+\@writefile{loa}{\contentsline {algorithm}{\numberline {1}{\ignorespaces $\textsc  {ResolveTree}(\text  {node}, \text  {priorHops}, \text  {cache})$}}{5}{}\protected@file@percent }
+\newlabel{alg:resolve}{{1}{5}}
+\newlabel{eq:gscore}{{4}{5}}
+\newlabel{eq:vscore}{{5}{5}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {\mbox  {IV-C}2}Dynamic Top-$k$ Computation}{5}{}\protected@file@percent }
+\newlabel{eq:topk}{{6}{5}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {\mbox  {IV-C}3}Route Selection}{5}{}\protected@file@percent }
+\newlabel{eq:route}{{7}{5}}
+\@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces Query Router decision flowchart. Three signal scores ($s_{\text  {graph}}$, $s_{\text  {vec}}$, multi-hop flag) drive a priority cascade to select one of four retrieval strategies. Dynamic $k$ is computed from query complexity coefficient $\xi $.}}{5}{}\protected@file@percent }
+\newlabel{fig:router}{{2}{5}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {IV-D}}Semantic and Lexical Search with RRF Fusion}{5}{}\protected@file@percent }
+\newlabel{sec:rrf}{{\mbox  {IV-D}}{5}}
+\newlabel{eq:cosine}{{8}{5}}
+\newlabel{eq:idf}{{9}{5}}
+\newlabel{eq:rrf}{{10}{5}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {IV-E}}Document Ranking and Entity Bonus}{5}{}\protected@file@percent }
+\newlabel{sec:rank}{{\mbox  {IV-E}}{5}}
+\newlabel{eq:final}{{11}{5}}
+\@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces Three-stage answer validation pipeline. Stage\nobreakspace  {}1 (Fast Heuristic) avoids LLM calls when lexical overlap and cross-source consensus are both high. Stage\nobreakspace  {}2 enforces answer-type alignment. Stage\nobreakspace  {}3 invokes a consolidated LLM judge for borderline cases.}}{6}{}\protected@file@percent }
+\newlabel{fig:val}{{3}{6}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {IV-F}}Answer Validation}{6}{}\protected@file@percent }
+\newlabel{sec:val}{{\mbox  {IV-F}}{6}}
+\newlabel{eq:lexconf}{{12}{6}}
+\@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces ART-R self-healing mechanism. When a leaf node exhausts retries, the \texttt  {TreeRestructurer} proposes 1--3 finer sub-questions. The failed leaf is promoted to a composite node and resolved recursively (capped at \texttt  {max\_restructures}=1).}}{6}{}\protected@file@percent }
+\newlabel{fig:artr}{{4}{6}}
+\newlabel{eq:llmjudge}{{13}{6}}
+\newlabel{eq:consensus}{{14}{6}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {IV-G}}ART-R: Adaptive Retrieval Tree Restructuring}{6}{}\protected@file@percent }
+\newlabel{sec:artr}{{\mbox  {IV-G}}{6}}
+\newlabel{eq:artrcond}{{15}{6}}
+\citation{yan2024corrective}
+\citation{yang2018hotpotqa}
+\citation{trivedi2022musique}
+\@writefile{lot}{\contentsline {table}{\numberline {I}{\ignorespaces HAMH-RAG Technology Stack}}{7}{}\protected@file@percent }
+\newlabel{tab:stack}{{I}{7}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {IV-H}}Bridge Retrieval (CRAG-style Corrective Action)}{7}{}\protected@file@percent }
+\newlabel{sec:bridge}{{\mbox  {IV-H}}{7}}
+\@writefile{toc}{\contentsline {section}{\numberline {V}Implementation Details}{7}{}\protected@file@percent }
+\newlabel{sec:impl}{{V}{7}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {V-A}}Technology Stack}{7}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {V-B}}Document Ingestion Pipeline}{7}{}\protected@file@percent }
+\newlabel{eq:overlap}{{16}{7}}
+\@writefile{lot}{\contentsline {table}{\numberline {II}{\ignorespaces HAMH-RAG REST API Endpoints}}{7}{}\protected@file@percent }
+\newlabel{tab:api}{{II}{7}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {V-C}}LLM Client and Caching}{7}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {V-D}}FastAPI Endpoint Design}{7}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {V-E}}Timeout and Deadline Management}{7}{}\protected@file@percent }
+\newlabel{eq:deadline}{{17}{7}}
+\@writefile{toc}{\contentsline {section}{\numberline {VI}Experimental Setup and Results}{7}{}\protected@file@percent }
+\newlabel{sec:eval}{{VI}{7}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {VI-A}}Datasets}{7}{}\protected@file@percent }
+\citation{trivedi2023interleaving}
+\@writefile{lot}{\contentsline {table}{\numberline {III}{\ignorespaces Multi-Hop QA Results on HotpotQA and MuSiQue}}{8}{}\protected@file@percent }
+\newlabel{tab:results}{{III}{8}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {VI-B}}Baselines}{8}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {VI-C}}Evaluation Metrics}{8}{}\protected@file@percent }
+\newlabel{eq:f1}{{18}{8}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {VI-D}}Main Results}{8}{}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {IV}{\ignorespaces Ablation Study on HotpotQA (Token F1)}}{8}{}\protected@file@percent }
+\newlabel{tab:ablation}{{IV}{8}}
+\@writefile{lot}{\contentsline {table}{\numberline {V}{\ignorespaces Retrieval Latency by Route (ms, $n$=500 questions)}}{8}{}\protected@file@percent }
+\newlabel{tab:latency}{{V}{8}}
+\@writefile{lot}{\contentsline {table}{\numberline {VI}{\ignorespaces End-to-End Pipeline Throughput (stub LLM)}}{8}{}\protected@file@percent }
+\newlabel{tab:bench}{{VI}{8}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {VI-E}}Ablation Study}{8}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {VII}Performance Evaluation}{8}{}\protected@file@percent }
+\newlabel{sec:perf}{{VII}{8}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {VII-A}}Retrieval Latency}{8}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {VII-B}}End-to-End Pipeline Throughput}{8}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {VII-C}}Complexity Analysis}{9}{}\protected@file@percent }
+\newlabel{eq:time}{{19}{9}}
+\@writefile{toc}{\contentsline {section}{\numberline {VIII}Advantages and Limitations}{9}{}\protected@file@percent }
+\newlabel{sec:adv}{{VIII}{9}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {VIII-A}}Advantages}{9}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {VIII-B}}Limitations}{9}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {IX}Future Work}{9}{}\protected@file@percent }
+\newlabel{sec:future}{{IX}{9}}
+\@writefile{toc}{\contentsline {section}{\numberline {X}Conclusion}{9}{}\protected@file@percent }
+\newlabel{sec:conc}{{X}{9}}
+\bibstyle{plain}
+\bibdata{references}
+\bibcite{cormack2009reciprocal}{1}
+\bibcite{edge2024local}{2}
+\bibcite{gao2023retrieval}{3}
+\bibcite{jiang2023active}{4}
+\bibcite{johnson2019billion}{5}
+\bibcite{lewis2020retrieval}{6}
+\bibcite{min2019discrete}{7}
+\bibcite{neo4j2020graph}{8}
+\bibcite{press2023measuring}{9}
+\bibcite{reimers2019sentence}{10}
+\bibcite{shi2023replug}{11}
+\bibcite{trivedi2022musique}{12}
+\bibcite{trivedi2023interleaving}{13}
+\bibcite{wang2022self}{14}
+\bibcite{wei2022chain}{15}
+\bibcite{yan2024corrective}{16}
+\bibcite{yang2018hotpotqa}{17}
+\bibcite{yao2023react}{18}
+\bibcite{zhang2025treeqa}{19}
+\@writefile{toc}{\contentsline {section}{References}{10}{}\protected@file@percent }
+\gdef \@abspage@last{10}

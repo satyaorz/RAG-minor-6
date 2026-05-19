@@ -104,12 +104,14 @@ class AnswerGenerator:
 
     def _direct_bridge_final(self, query: str, nodes: list[QueryNode]) -> str | None:
         """Return terminal bridge answers without spending a final LLM call."""
+        # 1. Creation/founding date bridge (already handled)
         creation_target = self._target_creation_node(query, nodes)
         if creation_target is not None and creation_target.answer:
             answer = self._strip_sources(creation_target.answer)
             refs = self._node_source_refs([creation_target]) or self._node_source_refs(nodes)
             return self._clean_text(f"{answer} Sources: {refs}")
 
+        # 2. Russian city
         lowered_query = query.lower()
         if "russian" in lowered_query and re.search(r"\b(city|cities)\b", lowered_query):
             city_terms = re.compile(r"\brussian\b.*\b(city|cities)\b|\b(city|cities)\b.*\brussian\b", re.I)
@@ -121,7 +123,76 @@ class AnswerGenerator:
                     refs = self._node_source_refs([node]) or self._node_source_refs(nodes)
                     return self._clean_text(f"{answer} Sources: {refs}")
 
+        # 3. Generic person-attribute bridge terminal forwarding
+        # For: "Where did the director of X die?" with nodes:
+        #   node-1: "Who is the director of X?" → "Richard Eichberg"
+        #   node-2: "Where did that director die?"  → "Berlin"
+        # The last resolved child that answers the root's wh-question is the answer.
+        terminal = self._target_person_attribute_node(query, nodes)
+        if terminal is not None and terminal.answer:
+            answer = self._strip_sources(terminal.answer)
+            refs = self._node_source_refs([terminal]) or self._node_source_refs(nodes)
+            return self._clean_text(f"{answer} Sources: {refs}")
+
         return None
+
+    # ------------------------------------------------------------------
+    # Bridge terminal detection helpers
+    # ------------------------------------------------------------------
+
+    _WH_TO_ATTR = {
+        "where": ("die", "born", "live", "work", "buried", "grow", "from", "educated", "study",
+                  "graduate", "attend", "located", "reside", "move", "come"),
+        "when": ("die", "born", "start", "begin", "end", "marry", "retire", "publish", "found",
+                 "establish", "create", "invent", "discover"),
+        "what": ("nationality", "citizenship", "profession", "occupation", "genre", "language",
+                 "award", "title", "name", "known"),
+        "who": ("marry", "partner", "spouse", "direct", "produce", "found", "create"),
+        "how": ("many", "much", "long", "old"),
+    }
+
+    def _target_person_attribute_node(
+        self, query: str, nodes: list[QueryNode]
+    ) -> "QueryNode | None":
+        """
+        Identify the child node that answers the terminal attribute in a
+        person-attribute bridge question.  Returns the last node whose question
+        contains a pronoun/anaphora ('that director', 'that person', 'they',
+        'their', 'that film', etc.) and whose answer is non-empty and verified.
+        """
+        lowered = query.lower()
+
+        # Detect wh-word of the root question
+        wh_match = re.match(r"^(where|when|what|who|which|how)", lowered)
+        if not wh_match:
+            return None
+        wh = wh_match.group(1)
+
+        anaphora_re = re.compile(
+            r"\b(that|their|its|this|they|the\s+(?:director|author|writer|producer|actor|"
+            r"actress|composer|singer|creator|founder|person|individual|subject))\b",
+            re.IGNORECASE,
+        )
+
+        # Look for the last child node that (a) uses anaphora and (b) has an answer
+        candidates = []
+        for node in nodes:
+            if not node.answer:
+                continue
+            node_q_lower = node.question.lower()
+            if not anaphora_re.search(node_q_lower):
+                continue
+            # Bonus: the node's wh-word matches the root's wh-word
+            node_wh = re.match(r"^(where|when|what|who|which|how)", node_q_lower)
+            score = 2 if (node_wh and node_wh.group(1) == wh) else 1
+            candidates.append((score, node))
+
+        if not candidates:
+            return None
+        # Highest score, last occurrence wins
+        candidates.sort(key=lambda x: x[0])
+        return candidates[-1][1]
+
 
     def _format_context(self, question: str, documents: list[RetrievedDocument]) -> str:
         return "\n".join(

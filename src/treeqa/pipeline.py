@@ -628,6 +628,10 @@ class TreeQAPipeline:
         lowered = question.lower()
         if lowered.startswith(("how ", "why ", "then ", "after ")):
             return True
+        # Angle-bracket placeholders emitted by the LLM decomposer
+        # e.g. "When was <director> born?" — always a dependent hop
+        if re.search(r"<[^>]+>", question):
+            return True
         markers = (
             " it ",
             " its ",
@@ -642,6 +646,12 @@ class TreeQAPipeline:
             " previous ",
             " above ",
             " same as ",
+            " that director",
+            " the director from",
+            " that person",
+            " that team",
+            " that film",
+            " that movie",
         )
         padded = f" {lowered} "
         return any(marker in padded for marker in markers)
@@ -669,6 +679,22 @@ class TreeQAPipeline:
             return question
 
         entity = cls._extract_context_entity(prior_hops[-1][1])
+
+        # --- Resolve angle-bracket placeholders like <director>, <team>, <person> ---
+        # Do this regardless of whether entity was found via regex — use any
+        # prominent proper noun extracted from the prior-hop answer.
+        placeholder_match = re.search(r"<([^>]+)>", question)
+        if placeholder_match:
+            if entity:
+                # Replace <whatever> with the extracted entity
+                question = re.sub(r"<[^>]+>", entity, question)
+            else:
+                # Fall back: extract the longest capitalised noun phrase from the answer
+                fallback = cls._extract_any_entity(prior_hops[-1][1])
+                if fallback:
+                    question = re.sub(r"<[^>]+>", fallback, question)
+            return question
+
         if not entity:
             return question
 
@@ -695,6 +721,8 @@ class TreeQAPipeline:
     @staticmethod
     def _extract_context_entity(answer: str) -> str:
         cleaned = TreeQAPipeline._strip_sources(answer)
+
+        # Water bodies
         water = re.search(
             r"\b([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+)*\s+"
             r"(?:Sea|Ocean|Bay|Strait|Reservoir|Lake|River))\b",
@@ -707,6 +735,7 @@ class TreeQAPipeline:
         if gulf:
             return gulf.group(1)
 
+        # Sports teams: "X won"
         team = re.search(
             r"\b(?:The\s+)?([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){1,4})\s+won\b",
             cleaned,
@@ -714,7 +743,40 @@ class TreeQAPipeline:
         if team:
             return team.group(1)
 
+        # Person / director patterns: "directed by X", "director is X", "director was X"
+        director = re.search(
+            r"(?:directed by|director(?:\s+(?:is|was|of the film)?)?[:\s]+)"
+            r"([A-Z][A-Za-z'.-]+(?:\s+[A-Z][A-Za-z'.-]+){0,3})",
+            cleaned,
+        )
+        if director:
+            name = director.group(1).strip(" .,;")
+            # Must have at least 2 parts to be a real full name, otherwise keep partial
+            return name
+
         return ""
+
+    @staticmethod
+    def _extract_any_entity(answer: str) -> str:
+        """Last-resort: return the longest capitalised multi-word noun phrase
+        from the answer, excluding common sentence starters."""
+        cleaned = TreeQAPipeline._strip_sources(answer)
+        stop = {"The", "A", "An", "This", "That", "These", "Those",
+                "He", "She", "It", "They", "His", "Her", "Its"}
+        # Find all capitalised tokens sequences (proper noun phrases)
+        phrases = re.findall(
+            r"([A-Z][A-Za-z'.-]+(?:\s+[A-Z][A-Za-z'.-]+)*)",
+            cleaned,
+        )
+        candidates = [
+            p.strip(" .,;")
+            for p in phrases
+            if p.split()[0] not in stop and len(p.split()) >= 1
+        ]
+        if not candidates:
+            return ""
+        # Prefer longer (more specific) phrases
+        return max(candidates, key=len)
 
     @staticmethod
     def _strip_sources(text: str) -> str:

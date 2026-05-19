@@ -155,6 +155,34 @@ class AnswerValidator:
         if not lowered_q:
             return True
 
+        # --- Birthday / birth date check ---
+        # "When was X born?" → must contain a date; reject if answer covers
+        # multiple people's birthdays without matching the specific subject.
+        if re.search(r"\bborn\b", lowered_q) and "when" in lowered_q:
+            has_date = bool(re.search(
+                r"\b(\d{1,2}\s+\w+\s+\d{4}|\w+\s+\d{1,2},?\s+\d{4}|\d{4})\b",
+                lowered_a,
+            ))
+            if not has_date:
+                return False
+            multi_person_dates = re.findall(
+                r"([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){1,3})\s+(?:was born|born on|born in)",
+                answer,
+            )
+            if len(multi_person_dates) > 1:
+                name_match = re.search(
+                    r"(?:when was|birthday of)\s+([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,3})",
+                    question,
+                    re.IGNORECASE,
+                )
+                if name_match:
+                    subject = name_match.group(1).lower()
+                    if not any(subject in n.lower() for n in multi_person_dates):
+                        return False
+                else:
+                    return False
+            return True
+
         if "when" in lowered_q and re.search(
             r"\b(created|founded|formed|established|started|inaugurated)\b",
             lowered_q,
@@ -185,6 +213,7 @@ class AnswerValidator:
             return any(body in document.content.lower() for document in documents) or body in lowered_a
 
         return True
+
 
     @staticmethod
     def _evidence_overlap_confidence(

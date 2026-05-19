@@ -1,0 +1,132 @@
+\begin{thebibliography}{10}
+
+\bibitem{cormack2009reciprocal}
+Gordon~V. Cormack, Charles L.~A. Clarke, and Stefan Buettcher.
+\newblock Reciprocal rank fusion outperforms condorcet and individual rank
+  learning methods.
+\newblock In {\em Proceedings of the 32nd International ACM SIGIR Conference on
+  Research and Development in Information Retrieval}, pages 758--759, 2009.
+
+\bibitem{edge2024local}
+Darren Edge, Ha~Trinh, Newman Cheng, Joshua Bradley, Alex Chao, Apurva Mody,
+  Steven Truitt, and Jonathan Larson.
+\newblock From local to global: {A} graph {RAG} approach to query-focused
+  summarization.
+\newblock {\em arXiv preprint arXiv:2404.16130}, 2024.
+
+\bibitem{gao2023retrieval}
+Yunfan Gao, Yun Xiong, Xinyu Gao, Kangxiang Jia, Jinliu Pan, Yuxi Bi, Yi~Dai,
+  Jiawei Sun, Meng Wang, and Haofen Wang.
+\newblock Retrieval-augmented generation for large language models: {A} survey.
+\newblock {\em arXiv preprint arXiv:2312.10997}, 2023.
+
+\bibitem{jiang2023active}
+Zhengbao Jiang, Frank~F. Xu, Luyu Gao, Zhiqing Sun, Qian Liu, Jane Dwivedi-Yu,
+  Yiming Yang, Jamie Callan, and Graham Neubig.
+\newblock Active retrieval augmented generation.
+\newblock In {\em Proceedings of the 2023 Conference on Empirical Methods in
+  Natural Language Processing}, pages 7969--7992, 2023.
+
+\bibitem{johnson2019billion}
+Jeff Johnson, Matthijs Douze, and Herv{\'{e}} J{\'{e}}gou.
+\newblock Billion-scale similarity search with {GPUs}.
+\newblock {\em {IEEE} Transactions on Big Data}, 7(3):535--547, 2021.
+
+\bibitem{lewis2020retrieval}
+Patrick Lewis, Ethan Perez, Aleksandra Piktus, Fabio Petroni, Vladimir
+  Karpukhin, Naman Goyal, Heinrich K{\"{u}}ttler, Mike Lewis, Wen{-}tau Yih,
+  Tim Rockt{\"{a}}schel, Sebastian Riedel, and Douwe Kiela.
+\newblock Retrieval-augmented generation for knowledge-intensive {NLP} tasks.
+\newblock {\em Advances in Neural Information Processing Systems},
+  33:9459--9474, 2020.
+
+\bibitem{min2019discrete}
+Sewon Min, Victor Zhong, Luke Zettlemoyer, and Hannaneh Hajishirzi.
+\newblock Multi-hop reading comprehension through question decomposition and
+  rescoring.
+\newblock In {\em Proceedings of the 57th Annual Meeting of the Association for
+  Computational Linguistics}, pages 6097--6109, 2019.
+
+\bibitem{neo4j2020graph}
+{Neo4j, Inc.}
+\newblock Neo4j graph database platform.
+\newblock {\em Technical Report}, 2023.
+\newblock Available: https://neo4j.com/.
+
+\bibitem{press2023measuring}
+Ofir Press, Muru Zhang, Sewon Min, Ludwig Schmidt, Noah~A. Smith, and Mike
+  Lewis.
+\newblock Measuring and narrowing the compositionality gap in language models.
+\newblock In {\em Findings of the Association for Computational Linguistics:
+  EMNLP 2023}, pages 5687--5711, 2023.
+
+\bibitem{reimers2019sentence}
+Nils Reimers and Iryna Gurevych.
+\newblock Sentence-{BERT}: Sentence embeddings using siamese {BERT}-networks.
+\newblock In {\em Proceedings of the 2019 Conference on Empirical Methods in
+  Natural Language Processing}, pages 3982--3992, 2019.
+
+\bibitem{shi2023replug}
+Weijia Shi, Sewon Min, Michihiro Yasunaga, Minjoon Seo, Rich James, Mike Lewis,
+  Luke Zettlemoyer, and Wen{-}tau Yih.
+\newblock {REPLUG}: Retrieval-augmented black-box language models.
+\newblock In {\em Proceedings of the 2024 Conference of the North American
+  Chapter of the Association for Computational Linguistics}. Association for
+  Computational Linguistics, 2024.
+
+\bibitem{trivedi2022musique}
+Harsh Trivedi, Niranjan Balasubramanian, Tushar Khot, and Ashish Sabharwal.
+\newblock {MuSiQue}: Multihop questions via single-hop question composition.
+\newblock In {\em Transactions of the Association for Computational
+  Linguistics}, volume~10, pages 539--554, 2022.
+
+\bibitem{trivedi2023interleaving}
+Harsh Trivedi, Niranjan Balasubramanian, Tushar Khot, and Ashish Sabharwal.
+\newblock Interleaving retrieval with chain-of-thought reasoning for
+  knowledge-intensive multi-step questions.
+\newblock In {\em Proceedings of the 61st Annual Meeting of the Association for
+  Computational Linguistics}, pages 10014--10037, 2023.
+
+\bibitem{wang2022self}
+Xuezhi Wang, Jason Wei, Dale Schuurmans, Quoc~V. Le, Ed~H. Chi, Sharan Narang,
+  Aakanksha Chowdhery, and Denny Zhou.
+\newblock Self-consistency improves chain of thought reasoning in language
+  models.
+\newblock {\em arXiv preprint arXiv:2203.11171}, 2022.
+
+\bibitem{wei2022chain}
+Jason Wei, Xuezhi Wang, Dale Schuurmans, Maarten Bosma, Fei Xia, Ed~H. Chi,
+  Quoc~V. Le, and Denny Zhou.
+\newblock Chain-of-thought prompting elicits reasoning in large language
+  models.
+\newblock {\em Advances in Neural Information Processing Systems},
+  35:24824--24837, 2022.
+
+\bibitem{yan2024corrective}
+Shi-Qi Yan, Jia-Chen Gu, Yun Zhu, and Zhen-Hua Ling.
+\newblock Corrective retrieval augmented generation.
+\newblock In {\em arXiv preprint arXiv:2401.15884}, 2024.
+
+\bibitem{yang2018hotpotqa}
+Zhilin Yang, Peng Qi, Saizheng Zhang, Yoshua Bengio, William~W. Cohen, Ruslan
+  Salakhutdinov, and Christopher~D. Manning.
+\newblock {HotpotQA}: {A} dataset for diverse, explainable multi-hop question
+  answering.
+\newblock In {\em Proceedings of the 2018 Conference on Empirical Methods in
+  Natural Language Processing}, pages 2369--2380. Association for Computational
+  Linguistics, 2018.
+
+\bibitem{yao2023react}
+Shunyu Yao, Jeffrey Zhao, Dian Yu, Nan Du, Izhak Shafran, Karthik~R Narasimhan,
+  and Yuan Cao.
+\newblock {ReAct}: Synergizing reasoning and acting in language models.
+\newblock In {\em The Eleventh International Conference on Learning
+  Representations}, 2023.
+
+\bibitem{zhang2025treeqa}
+Xiangrui Zhang et~al.
+\newblock {TreeQA}: Enhanced {LLM-RAG} with logic tree reasoning for reliable
+  and interpretable multi-hop question answering.
+\newblock {\em Knowledge-Based Systems}, 330:114526, 2025.
+
+\end{thebibliography}
