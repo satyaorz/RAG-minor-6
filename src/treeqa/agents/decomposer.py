@@ -96,14 +96,21 @@ class QueryDecomposer:
         if result:
             return result
 
-        # --- 4. STRUCTURAL: same-attribute comparison ---
+        # --- 4. STRUCTURAL: comparison of two entities (A or B?) ---
+        #     "Which film has the director who was born earlier, People To Each Other or Tali-Ihantala 1944?"
+        #     "Which person lived longer, A or B?"
+        result = self._decompose_or_comparison(query)
+        if result:
+            return result
+
+        # --- 5. STRUCTURAL: same-attribute comparison ---
         #     "Were A and B born in the same country?" (2Wiki)
         #     "Did the director of X and the director of Y share the same nationality?"
         result = self._decompose_same_attribute_comparison(query)
         if result:
             return result
 
-        # --- 5. Explicit conjunction bridge ---
+        # --- 6. Explicit conjunction bridge ---
         #     "Who is [person] and where did they [verb]?" (MuSiQue)
         result = self._decompose_explicit_conjunction(query)
         if result:
@@ -324,7 +331,91 @@ class QueryDecomposer:
         return [q1, q2]
 
     # ------------------------------------------------------------------
-    # Pattern 4: Same-attribute comparison  (2WikiMultiHopQA)
+    # Pattern 4: Comparison ("... A or B?")
+    # ------------------------------------------------------------------
+
+    def _decompose_or_comparison(self, query: str) -> list[str]:
+        """
+        Comparison questions ending in 'A or B?'
+        e.g., 'Which film has the director who was born earlier, People To Each Other or Tali-Ihantala 1944?'
+        e.g., 'Which film was released earlier, A or B?'
+        """
+        lowered = query.lower()
+
+        # Must end in "A or B?"
+        m = re.search(r",\s*(.+?)\s+or\s+(.+?)\??\s*$", query)
+        if not m:
+            return []
+
+        a = m.group(1).strip()
+        b = m.group(2).strip()
+        prefix = query[:m.start()].strip()
+        prefix_lower = prefix.lower()
+
+        # Case 1: Comparing a role's attribute (e.g. director's birth date)
+        # "Which film has the director who was born earlier"
+        # "Which film has the director who died earlier"
+        role_match = re.search(
+            r"\bthe\s+(" + self._ROLE_ALT + r")\s+(?:who|that)\s+(?:was\s+|is\s+)?(.+)",
+            prefix,
+            re.IGNORECASE,
+        )
+        if role_match:
+            role = role_match.group(1).lower()
+            pred = role_match.group(2).strip().lower()
+
+            wh = "when"
+            verb = "born"
+            if "born" in pred or "older" in pred or "younger" in pred:
+                wh = "when"
+                verb = "born"
+            elif "die" in pred or "lived" in pred or "passed" in pred:
+                wh = "when"
+                verb = "die"
+
+            a_entity = self._recover_entity_case(query, a)
+            b_entity = self._recover_entity_case(query, b)
+
+            q1 = f"{wh.capitalize()} {'did' if verb == 'die' else 'was'} the {role} of {a_entity} {verb}?"
+            q2 = f"{wh.capitalize()} {'did' if verb == 'die' else 'was'} the {role} of {b_entity} {verb}?"
+            return [q1, q2]
+
+        # Case 2: Direct entity comparison
+        # "Which film was released earlier" -> "When was [A] released?"
+        # "Who lived longer" -> "When was [A] born?" / "When did [A] die?" (Wait, "lived longer" requires birth and death, maybe just "When did A die?")
+        # For simplicity, let's just handle standard "was <verb>" patterns
+        direct_match = re.search(
+            r"\b(?:was|is)\s+([\w\s]+)",
+            prefix,
+            re.IGNORECASE,
+        )
+        if direct_match:
+            pred = direct_match.group(1).strip().lower()
+            wh = "when"
+            verb = "released"
+            
+            if "release" in pred or "publish" in pred:
+                wh = "when"
+                verb = "released" if "release" in pred else "published"
+            elif "born" in pred or "older" in pred or "younger" in pred:
+                wh = "when"
+                verb = "born"
+            elif "found" in pred or "creat" in pred or "establish" in pred:
+                wh = "when"
+                verb = "founded"
+                
+            a_entity = self._recover_entity_case(query, a)
+            b_entity = self._recover_entity_case(query, b)
+            
+            aux = "did" if verb == "die" else "was"
+            q1 = f"{wh.capitalize()} {aux} {a_entity} {verb}?"
+            q2 = f"{wh.capitalize()} {aux} {b_entity} {verb}?"
+            return [q1, q2]
+
+        return []
+
+    # ------------------------------------------------------------------
+    # Pattern 5: Same-attribute comparison  (2WikiMultiHopQA)
     # ------------------------------------------------------------------
 
     def _decompose_same_attribute_comparison(self, query: str) -> list[str]:
