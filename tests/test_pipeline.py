@@ -5,11 +5,11 @@ from __future__ import annotations
 import unittest
 from unittest.mock import MagicMock
 
-from treeqa.agents.decomposer import QueryDecomposer
-from treeqa.config import TreeQASettings
-from treeqa.models import PipelineResult, QueryNode, RetrievedDocument, ValidationResult
-from treeqa.pipeline import TreeQAPipeline
-from treeqa.retrieval.hybrid import RetrievalTrace
+from hamhrag.agents.decomposer import QueryDecomposer
+from hamhrag.config import HamhRagSettings
+from hamhrag.models import PipelineResult, QueryNode, RetrievedDocument, ValidationResult
+from hamhrag.pipeline import HamhRagPipeline
+from hamhrag.retrieval.hybrid import RetrievalTrace
 
 
 # ---------------------------------------------------------------------------
@@ -56,9 +56,9 @@ def _stub_restructurer(new_nodes: list[QueryNode] | None = None) -> MagicMock:
     return mock
 
 
-def _offline_settings() -> TreeQASettings:
+def _offline_settings() -> HamhRagSettings:
     """Settings that do not trigger any network or file-system access."""
-    return TreeQASettings(
+    return HamhRagSettings(
         llm_provider="stub",
         vector_provider="memory",
         graph_provider="memory",
@@ -66,9 +66,9 @@ def _offline_settings() -> TreeQASettings:
     )
 
 
-def _make_pipeline(**overrides) -> TreeQAPipeline:
-    """Build a TreeQAPipeline where every component defaults to a predictable stub."""
-    return TreeQAPipeline(
+def _make_pipeline(**overrides) -> HamhRagPipeline:
+    """Build a HamhRagPipeline where every component defaults to a predictable stub."""
+    return HamhRagPipeline(
         settings=_offline_settings(),
         decomposer=overrides.get("decomposer", QueryDecomposer(llm_client=None)),
         retriever=overrides.get("retriever", _stub_retriever()),
@@ -83,12 +83,12 @@ def _make_pipeline(**overrides) -> TreeQAPipeline:
 # Tests
 # ---------------------------------------------------------------------------
 
-class TreeQAPipelineTest(unittest.TestCase):
+class HamhRagPipelineTest(unittest.TestCase):
     def test_pipeline_returns_final_answer_and_tree(self) -> None:
         pipeline = _make_pipeline()
 
         result = pipeline.run(
-            "How does TreeQA use hybrid retrieval and validation for multi-hop QA?"
+            "How does HamhRag use hybrid retrieval and validation for multi-hop QA?"
         )
 
         self.assertIsInstance(result, PipelineResult)
@@ -304,7 +304,14 @@ class TreeQAPipelineTest(unittest.TestCase):
             "No, one director is American and the other is German. Sources: vector:Werner_Jacobs-chunk-1"
         )
 
+        decomposer = MagicMock()
+        decomposer.decompose.return_value = QueryNode(
+            node_id="root",
+            question="What country is the director of The Star Of Santa Clara from?",
+        )
+        
         pipeline = _make_pipeline(
+            decomposer=decomposer,
             retriever=_Retriever(),
             validator=validator,
             generator=generator,
@@ -437,6 +444,35 @@ class TreeQAPipelineTest(unittest.TestCase):
         self.assertEqual(retriever.queries[0], "In which body of water is Saaremaa located?")
         self.assertTrue(retriever.queries[1].startswith("Which major Russian city borders Baltic Sea?"))
         self.assertIn("Saaremaa is located in the Baltic Sea.", retriever.queries[1])
+
+    def test_pipeline_resolves_musique_question(self) -> None:
+        # e.g., "What record label does the singer in 4 non blondes sign?"
+        decomposer = QueryDecomposer(llm_client=None)
+        
+        class _Retriever:
+            def retrieve(self, question: str) -> list[RetrievedDocument]:
+                if "singer in 4 non blondes" in question.lower():
+                    return [RetrievedDocument(source_id="4NB", source_type="vector", content="Linda Perry was the singer in 4 Non Blondes.", score=0.9)]
+                return [RetrievedDocument(source_id="LP", source_type="vector", content="Linda Perry is signed to Custard Records.", score=0.9)]
+        
+        validator = _stub_validator(passed=True, confidence=0.9)
+        generator = MagicMock()
+        generator.generate_for_node.side_effect = [
+            "Linda Perry. Sources: vector:4NB",
+            "Custard Records. Sources: vector:LP",
+        ]
+        generator.generate_final.return_value = "Custard Records"
+        
+        pipeline = _make_pipeline(
+            decomposer=decomposer,
+            retriever=_Retriever(),
+            validator=validator,
+            generator=generator,
+        )
+        
+        result = pipeline.run("What record label does the singer in 4 non blondes sign?", tree_retries_override=0)
+        self.assertEqual(result.root.status, "verified")
+        self.assertEqual(result.final_answer, "Custard Records")
 
 
 if __name__ == "__main__":

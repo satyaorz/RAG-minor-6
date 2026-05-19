@@ -4,14 +4,14 @@ from pathlib import Path
 import unittest
 from unittest.mock import patch
 
-from treeqa.backends.graph import LocalGraphBackend
-from treeqa.backends.vector import LocalVectorBackend
-from treeqa.config import TreeQASettings
-from treeqa.ingest import build_local_indices
+from hamhrag.backends.graph import LocalGraphBackend
+from hamhrag.backends.vector import LocalVectorBackend
+from hamhrag.config import HamhRagSettings
+from hamhrag.ingest import build_local_indices
 
 # Patch _build_faiss_index to be a no-op so tests don't pay the cost of encoding.
 # conftest.py already stubs sentence_transformers so LocalVectorBackend is fast.
-_PATCH_FAISS = patch("treeqa.ingest._build_faiss_index", return_value=None)
+_PATCH_FAISS = patch("hamhrag.ingest._build_faiss_index", return_value=None)
 
 
 class TreeQAIngestTest(unittest.TestCase):
@@ -27,15 +27,15 @@ class TreeQAIngestTest(unittest.TestCase):
             (data_dir / "documents").mkdir(parents=True)
             (data_dir / "graph").mkdir(parents=True)
             (data_dir / "documents" / "overview.md").write_text(
-                "TreeQA uses logic tree reasoning and hybrid retrieval.",
+                "HamhRag uses logic tree reasoning and hybrid retrieval.",
                 encoding="utf-8",
             )
             (data_dir / "graph" / "facts.jsonl").write_text(
-                '{"source_id":"fact-1","content":"TreeQA validates intermediate steps."}\n',
+                '{"source_id":"fact-1","content":"HamhRag validates intermediate steps."}\n',
                 encoding="utf-8",
             )
 
-            report = build_local_indices(TreeQASettings(data_dir=str(data_dir)))
+            report = build_local_indices(HamhRagSettings(data_dir=str(data_dir)))
 
             self.assertGreater(report.vector_chunks, 0)
             self.assertGreater(report.graph_facts, 0)
@@ -49,7 +49,7 @@ class TreeQAIngestTest(unittest.TestCase):
             (data_dir / "graph").mkdir(parents=True)
             # Two docs so IDF > 0 for terms that appear in only one doc
             (data_dir / "documents" / "overview.md").write_text(
-                "TreeQA uses logic tree reasoning and hybrid retrieval.",
+                "HamhRag uses logic tree reasoning and hybrid retrieval.",
                 encoding="utf-8",
             )
             (data_dir / "documents" / "extra.md").write_text(
@@ -57,11 +57,11 @@ class TreeQAIngestTest(unittest.TestCase):
                 encoding="utf-8",
             )
             (data_dir / "graph" / "facts.jsonl").write_text(
-                '{"source_id":"fact-1","content":"TreeQA validates intermediate steps."}\n',
+                '{"source_id":"fact-1","content":"HamhRag validates intermediate steps."}\n',
                 encoding="utf-8",
             )
 
-            report = build_local_indices(TreeQASettings(data_dir=str(data_dir)))
+            report = build_local_indices(HamhRagSettings(data_dir=str(data_dir)))
             vector_backend = LocalVectorBackend(report.vector_index_path)
             graph_backend = LocalGraphBackend(report.graph_index_path)
 
@@ -80,11 +80,11 @@ class TreeQAIngestTest(unittest.TestCase):
             )
             (data_dir / "documents" / "sample.md").write_text(doc, encoding="utf-8")
             (data_dir / "graph" / "facts.jsonl").write_text(
-                '{"source_id":"f1","content":"TreeQA validates sub-answers."}\n',
+                '{"source_id":"f1","content":"HamhRag validates sub-answers."}\n',
                 encoding="utf-8",
             )
 
-            report = build_local_indices(TreeQASettings(data_dir=str(data_dir)))
+            report = build_local_indices(HamhRagSettings(data_dir=str(data_dir)))
 
             vector_index_path = Path(report.vector_index_path)
             rows = [json.loads(line) for line in vector_index_path.read_text(encoding="utf-8").splitlines() if line.strip()]
@@ -108,7 +108,7 @@ class TreeQAIngestTest(unittest.TestCase):
             )
             (data_dir / "documents" / "sample.md").write_text(doc, encoding="utf-8")
 
-            report = build_local_indices(TreeQASettings(data_dir=str(data_dir)))
+            report = build_local_indices(HamhRagSettings(data_dir=str(data_dir)))
 
             vector_index_path = Path(report.vector_index_path)
             rows = [json.loads(line) for line in vector_index_path.read_text(encoding="utf-8").splitlines() if line.strip()]

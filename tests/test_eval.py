@@ -1,4 +1,4 @@
-"""Tests for the treeqa.eval benchmark runner."""
+"""Tests for the hamhrag.eval benchmark runner."""
 
 import json
 import tempfile
@@ -6,8 +6,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from treeqa.eval import _exact_match, _token_f1, _load_dataset, run_benchmark
-from treeqa.models import PipelineResult, QueryNode
+from hamhrag.eval import _exact_match, _token_f1, _load_dataset, run_benchmark
+from hamhrag.models import PipelineResult, QueryNode
 
 
 def _make_mock_pipeline(answer: str = "Hybrid retrieval combines vector and graph evidence.") -> MagicMock:
@@ -50,7 +50,7 @@ class EvalMetricsTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "bench.jsonl"
             lines = [
-                '{"question": "What is TreeQA?", "answer": "A RAG system."}',
+                '{"question": "What is HamhRag?", "answer": "A RAG system."}',
                 '{"question": "No answer field."}',
                 '{"answer": "No question field."}',
                 "",
@@ -58,7 +58,7 @@ class EvalMetricsTest(unittest.TestCase):
             path.write_text("\n".join(lines), encoding="utf-8")
             records = _load_dataset(path)
             self.assertEqual(len(records), 1)
-            self.assertEqual(records[0]["question"], "What is TreeQA?")
+            self.assertEqual(records[0]["question"], "What is HamhRag?")
 
 
 class EvalRunnerTest(unittest.TestCase):
@@ -71,7 +71,7 @@ class EvalRunnerTest(unittest.TestCase):
                 encoding="utf-8",
             )
             mock_pipeline = _make_mock_pipeline("Combines vector and graph evidence.")
-            with patch("treeqa.eval.TreeQAPipeline", return_value=mock_pipeline):
+            with patch("hamhrag.eval.HamhRagPipeline", return_value=mock_pipeline):
                 summary = run_benchmark(dataset, output_dir=tmp_path, limit=1)
 
             self.assertIn("n", summary)
@@ -97,7 +97,7 @@ class EvalRunnerTest(unittest.TestCase):
             )
             mock_pipeline = MagicMock()
             mock_pipeline.run.side_effect = RuntimeError("LLM call failed")
-            with patch("treeqa.eval.TreeQAPipeline", return_value=mock_pipeline):
+            with patch("hamhrag.eval.HamhRagPipeline", return_value=mock_pipeline):
                 summary = run_benchmark(dataset, output_dir=tmp_path, limit=1)
             self.assertEqual(summary["n"], 1)
             results_path = Path(summary["results_path"])

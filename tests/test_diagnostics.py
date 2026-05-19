@@ -1,8 +1,8 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
-from treeqa.config import TreeQASettings
-from treeqa.diagnostics import _check_llm, run_diagnostics
+from hamhrag.config import HamhRagSettings
+from hamhrag.diagnostics import _check_llm, run_diagnostics
 
 
 class FakeLLMClient:
@@ -18,7 +18,7 @@ class FakeLLMClient:
 
 class TreeQADiagnosticsTest(unittest.TestCase):
     def test_diagnostics_succeeds_for_memory_backends(self) -> None:
-        settings = TreeQASettings(
+        settings = HamhRagSettings(
             llm_provider="stub",
             vector_provider="memory",
             graph_provider="memory",
@@ -35,7 +35,7 @@ class TreeQADiagnosticsTest(unittest.TestCase):
         self.assertTrue(all(check.ok for check in report.checks))
 
     def test_diagnostics_fails_for_invalid_qdrant_config(self) -> None:
-        settings = TreeQASettings(
+        settings = HamhRagSettings(
             llm_provider="stub",
             vector_provider="qdrant",
             graph_provider="memory",
@@ -48,7 +48,7 @@ class TreeQADiagnosticsTest(unittest.TestCase):
         self.assertFalse(vector_checks[0].ok)
 
     def test_diagnostics_fails_for_missing_local_index(self) -> None:
-        settings = TreeQASettings(
+        settings = HamhRagSettings(
             llm_provider="stub",
             vector_provider="local",
             graph_provider="memory",
@@ -71,14 +71,14 @@ class TreeQADiagnosticsTest(unittest.TestCase):
             (index_dir / "vector_index.jsonl").write_text("", encoding="utf-8")
             (index_dir / "graph_facts.jsonl").write_text("", encoding="utf-8")
 
-            settings = TreeQASettings(
+            settings = HamhRagSettings(
                 llm_provider="stub",
                 vector_provider="local",
                 graph_provider="local",
                 data_dir=temp_dir,
             )
 
-            with patch("treeqa.backends.vector.LocalVectorBackend._build_embeddings", return_value=(None, None)):
+            with patch("hamhrag.backends.vector.LocalVectorBackend._build_embeddings", return_value=(None, None)):
                 report = run_diagnostics(settings=settings, live_llm_probe=False)
 
             self.assertFalse(report.ok)
@@ -88,7 +88,7 @@ class TreeQADiagnosticsTest(unittest.TestCase):
             )
 
     def test_llm_live_probe_accepts_non_literal_nonempty_response(self) -> None:
-        settings = TreeQASettings(
+        settings = HamhRagSettings(
             llm_provider="openrouter",
             llm_model="arcee-ai/trinity-large-preview:free",
             openrouter_api_key="test-key",
@@ -100,7 +100,7 @@ class TreeQADiagnosticsTest(unittest.TestCase):
         self.assertIn("reached the model successfully", result.detail)
 
     def test_llm_live_probe_fails_on_empty_response(self) -> None:
-        settings = TreeQASettings(
+        settings = HamhRagSettings(
             llm_provider="openrouter",
             llm_model="arcee-ai/trinity-large-preview:free",
             openrouter_api_key="test-key",
@@ -112,11 +112,11 @@ class TreeQADiagnosticsTest(unittest.TestCase):
         self.assertIn("empty response", result.detail)
 
 
-def _check_llm_with_fake_client(settings: TreeQASettings, response: str):
+def _check_llm_with_fake_client(settings: HamhRagSettings, response: str):
     from unittest.mock import patch
 
     fake_client = FakeLLMClient(response=response)
-    with patch("treeqa.diagnostics.build_llm_client", return_value=fake_client):
+    with patch("hamhrag.diagnostics.build_llm_client", return_value=fake_client):
         return _check_llm(settings, live_probe=True)
 
 

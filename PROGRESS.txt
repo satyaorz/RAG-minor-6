@@ -38,10 +38,10 @@ COMPLETED — TESTS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 COMPLETED — WEB APPLICATION
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-[x] FastAPI backend (src/treeqa/api/app.py)
+[x] FastAPI backend (src/hamhrag/api/app.py)
       POST /api/run/stream → SSE progress stream for ART-R nodes
       POST /api/load_dataset → Instant loading for cached datasets
-[x] Single-page frontend (src/treeqa/ui/index.html)
+[x] Single-page frontend (src/hamhrag/ui/index.html)
       — Visual logic-tree rendering with mutation tracking
       — SCC and confidence visualization
 
@@ -50,7 +50,7 @@ HOW TO RUN
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   pip install -e ".[api]"
   # Add OPENROUTER_API_KEY to .env
-  PYTHONPATH=src uvicorn treeqa.api.app:app --reload --port 8000
+  PYTHONPATH=src uvicorn hamhrag.api.app:app --reload --port 8000
   # open http://localhost:8000
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

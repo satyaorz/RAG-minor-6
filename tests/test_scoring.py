@@ -1,18 +1,18 @@
 import unittest
 
-from treeqa.models import RetrievedDocument
-from treeqa.retrieval.scoring import normalize_text, rank_documents, select_relevant_snippet
+from hamhrag.models import RetrievedDocument
+from hamhrag.retrieval.scoring import normalize_text, rank_documents, select_relevant_snippet
 
 
 class RetrievalScoringTest(unittest.TestCase):
     def test_normalize_text_removes_markdown_heading(self) -> None:
-        normalized = normalize_text("# TreeQA Overview\n\nUses hybrid retrieval.")
+        normalized = normalize_text("# HamhRag Overview\n\nUses hybrid retrieval.")
 
-        self.assertEqual(normalized, "TreeQA Overview Uses hybrid retrieval.")
+        self.assertEqual(normalized, "HamhRag Overview Uses hybrid retrieval.")
 
     def test_select_relevant_snippet_prefers_matching_sentences(self) -> None:
         content = (
-            "TreeQA is a system for multi-hop QA. "
+            "HamhRag is a system for multi-hop QA. "
             "Hybrid retrieval combines vector evidence and graph support. "
             "The UI shows a logic tree."
         )

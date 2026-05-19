@@ -1,14 +1,14 @@
 # HAMH-RAG
 
-HAMH-RAG (Hallucination-Aware Multi-Hop RAG) is a hallucination-aware, multi-hop RAG system with a logic-tree workflow and interactive web UI. The code package is still named `treeqa` for now.
+HAMH-RAG (Hallucination-Aware Multi-Hop RAG) is a hallucination-aware, multi-hop RAG system with a logic-tree workflow and interactive web UI. The code package is still named `hamhrag` for now.
 
 ## Layout
 
-- `src/treeqa/`: core package
-- `src/treeqa/agents/`: decomposition, validation, correction, and answer generation
-- `src/treeqa/retrieval/`: hybrid retrieval interfaces
-- `src/treeqa/api/`: FastAPI backend (REST API + SPA server)
-- `src/treeqa/ui/`: Streamlit UI and the vanilla-JS SPA (`index.html`)
+- `src/hamhrag/`: core package
+- `src/hamhrag/agents/`: decomposition, validation, correction, and answer generation
+- `src/hamhrag/retrieval/`: hybrid retrieval interfaces
+- `src/hamhrag/api/`: FastAPI backend (REST API + SPA server)
+- `src/hamhrag/ui/`: Streamlit UI and the vanilla-JS SPA (`index.html`)
 - `tests/`: offline unit and integration tests
 
 ## Quick start
@@ -16,8 +16,8 @@ HAMH-RAG (Hallucination-Aware Multi-Hop RAG) is a hallucination-aware, multi-hop
 1. Create and activate a virtual environment.
 2. Install the project: `pip install -e ".[api]"`
 3. Copy `.env.example` to `.env` and fill in your values.
-4. Build local indices: `python -m treeqa.cli ingest`
-5. Check setup: `python -m treeqa.cli doctor`
+4. Build local indices: `python -m hamhrag.cli ingest`
+5. Check setup: `python -m hamhrag.cli doctor`
 6. Run tests: `python -m pytest tests/ -q`
 
 For this repo, prefer the checked command targets so every workflow uses the
@@ -42,7 +42,7 @@ Start the FastAPI server (serves the interactive SPA at `http://localhost:8000`)
 
 ```bash
 .venv/bin/python -m pip install -e ".[api]"
-.venv/bin/python -m uvicorn treeqa.api.app:app --reload --port 8000
+.venv/bin/python -m uvicorn hamhrag.api.app:app --reload --port 8000
 ```
 
 Then open `http://localhost:8000` in a browser. Type a question and press **Run ▶** (or Ctrl+Enter).
@@ -60,17 +60,17 @@ The logic tree renders each sub-question node with its status, confidence, answe
 ## Streamlit UI (alternative)
 
 ```bash
-.venv/bin/python -m streamlit run src/treeqa/ui/streamlit_app.py
+.venv/bin/python -m streamlit run src/hamhrag/ui/streamlit_app.py
 ```
 
 ## CLI
 
 ```bash
-.venv/bin/python -m treeqa.cli run        # run the pipeline interactively
-.venv/bin/python -m treeqa.cli ingest     # build local retrieval indices from data/
-.venv/bin/python -m treeqa.cli doctor     # check config
-.venv/bin/python -m treeqa.cli doctor --live-llm   # verify live LLM round-trip
-.venv/bin/python -m treeqa.cli bench --dataset data/benchmark/sample.jsonl --limit 50 --mode both
+.venv/bin/python -m hamhrag.cli run        # run the pipeline interactively
+.venv/bin/python -m hamhrag.cli ingest     # build local retrieval indices from data/
+.venv/bin/python -m hamhrag.cli doctor     # check config
+.venv/bin/python -m hamhrag.cli doctor --live-llm   # verify live LLM round-trip
+.venv/bin/python -m hamhrag.cli bench --dataset data/benchmark/sample.jsonl --limit 50 --mode both
 ```
 
 ## Benchmarking
@@ -87,17 +87,17 @@ Do not commit that file. It is already ignored by [\.gitignore](d:\CompD\sem6Min
 
 Set these env vars to enable real services:
 
-- `TREEQA_LLM_PROVIDER=openai`
-- `TREEQA_LLM_MODEL=<model name>`
+- `HAMHRAG_LLM_PROVIDER=openai`
+- `HAMHRAG_LLM_MODEL=<model name>`
 - `OPENAI_API_KEY=<api key>`
-- `TREEQA_LLM_PROVIDER=openrouter`
-- `TREEQA_LLM_BASE_URL=https://openrouter.ai/api/v1`
-- `TREEQA_LLM_MODEL=arcee-ai/trinity-mini:free`
+- `HAMHRAG_LLM_PROVIDER=openrouter`
+- `HAMHRAG_LLM_BASE_URL=https://openrouter.ai/api/v1`
+- `HAMHRAG_LLM_MODEL=arcee-ai/trinity-mini:free`
 - `OPENROUTER_API_KEY=<api key>`
-- `TREEQA_VECTOR_PROVIDER=qdrant`
+- `HAMHRAG_VECTOR_PROVIDER=qdrant`
 - `VECTOR_STORE_URL=<qdrant url>`
-- `TREEQA_VECTOR_COLLECTION=<collection>`
-- `TREEQA_GRAPH_PROVIDER=neo4j`
+- `HAMHRAG_VECTOR_COLLECTION=<collection>`
+- `HAMHRAG_GRAPH_PROVIDER=neo4j`
 - `GRAPH_STORE_URL=<neo4j uri>`
 
 Optional provider packages:
@@ -105,20 +105,20 @@ Optional provider packages:
 - `pip install -e .[providers]`
 
 FAISS is auto-selected for the `local` vector provider when a `.faiss` index is present.
-Install `faiss-cpu` (or the providers extra) and run `python -m treeqa.cli ingest` to build the index.
+Install `faiss-cpu` (or the providers extra) and run `python -m hamhrag.cli ingest` to build the index.
 
 ### OpenRouter example
 
 Use this configuration to target OpenRouter with the current recommended free model stack:
 
 ```env
-TREEQA_LLM_PROVIDER=openrouter
-TREEQA_LLM_BASE_URL=https://openrouter.ai/api/v1
-TREEQA_LLM_MODEL=arcee-ai/trinity-mini:free
-TREEQA_LLM_FALLBACK_MODELS=nvidia/nemotron-3-nano-30b-a3b:free,arcee-ai/trinity-large-preview:free,qwen/qwen3-4b:free,openrouter/free
+HAMHRAG_LLM_PROVIDER=openrouter
+HAMHRAG_LLM_BASE_URL=https://openrouter.ai/api/v1
+HAMHRAG_LLM_MODEL=arcee-ai/trinity-mini:free
+HAMHRAG_LLM_FALLBACK_MODELS=nvidia/nemotron-3-nano-30b-a3b:free,arcee-ai/trinity-large-preview:free,qwen/qwen3-4b:free,openrouter/free
 OPENROUTER_API_KEY=your-key
-TREEQA_OPENROUTER_SITE_URL=http://localhost
-TREEQA_OPENROUTER_APP_NAME=HAMH-RAG
+HAMHRAG_OPENROUTER_SITE_URL=http://localhost
+HAMHRAG_OPENROUTER_APP_NAME=HAMH-RAG
 ```
 
 ### Minimal real setup for your current case
@@ -128,22 +128,22 @@ Since you only have an OpenRouter key right now, start with OpenRouter plus loca
 Use this in your local [\.env](d:\CompD\sem6Min\RAG-minor-6\.env):
 
 ```env
-TREEQA_LLM_PROVIDER=openrouter
-TREEQA_LLM_BASE_URL=https://openrouter.ai/api/v1
-TREEQA_LLM_MODEL=arcee-ai/trinity-mini:free
-TREEQA_LLM_FALLBACK_MODELS=nvidia/nemotron-3-nano-30b-a3b:free,arcee-ai/trinity-large-preview:free,qwen/qwen3-4b:free,openrouter/free
+HAMHRAG_LLM_PROVIDER=openrouter
+HAMHRAG_LLM_BASE_URL=https://openrouter.ai/api/v1
+HAMHRAG_LLM_MODEL=arcee-ai/trinity-mini:free
+HAMHRAG_LLM_FALLBACK_MODELS=nvidia/nemotron-3-nano-30b-a3b:free,arcee-ai/trinity-large-preview:free,qwen/qwen3-4b:free,openrouter/free
 OPENROUTER_API_KEY=your_openrouter_key
-TREEQA_OPENROUTER_SITE_URL=http://localhost
-TREEQA_OPENROUTER_APP_NAME=HAMH-RAG
+HAMHRAG_OPENROUTER_SITE_URL=http://localhost
+HAMHRAG_OPENROUTER_APP_NAME=HAMH-RAG
 
-TREEQA_VECTOR_PROVIDER=local
-TREEQA_GRAPH_PROVIDER=local
+HAMHRAG_VECTOR_PROVIDER=local
+HAMHRAG_GRAPH_PROVIDER=local
 
-TREEQA_MAX_RETRIES=2
-TREEQA_RETRIEVAL_TOP_K=3
-TREEQA_LLM_TIMEOUT_SECONDS=30
-TREEQA_LLM_TEMPERATURE=0.0
-TREEQA_DATA_DIR=data
+HAMHRAG_MAX_RETRIES=2
+HAMHRAG_RETRIEVAL_TOP_K=3
+HAMHRAG_LLM_TIMEOUT_SECONDS=30
+HAMHRAG_LLM_TEMPERATURE=0.0
+HAMHRAG_DATA_DIR=data
 ```
 
 You can leave the rest blank for now.
@@ -156,14 +156,14 @@ Put your source files under:
 Then build the local indices:
 
 ```bash
-python -m treeqa.cli ingest
+python -m hamhrag.cli ingest
 ```
 
 Before building further, run:
 
 ```bash
-python -m treeqa.cli doctor
-python -m treeqa.cli doctor --live-llm
+python -m hamhrag.cli doctor
+python -m hamhrag.cli doctor --live-llm
 ```
 
 `doctor` validates configuration without network calls. `doctor --live-llm` performs a real LLM probe and will surface issues such as invalid keys, rate limits, or blocked network access.

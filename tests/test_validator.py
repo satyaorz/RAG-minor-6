@@ -1,7 +1,7 @@
 import unittest
 
-from treeqa.agents.validator import AnswerValidator
-from treeqa.models import RetrievedDocument
+from hamhrag.agents.validator import AnswerValidator
+from hamhrag.models import RetrievedDocument
 
 
 class AnswerValidatorTest(unittest.TestCase):

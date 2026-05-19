@@ -1,6 +1,6 @@
 import unittest
 
-from treeqa.api.app import _pipeline_budget, _resolve_timeout_seconds
+from hamhrag.api.app import _pipeline_budget, _resolve_timeout_seconds
 
 
 class ApiTimeoutHelpersTest(unittest.TestCase):

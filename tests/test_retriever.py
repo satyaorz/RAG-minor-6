@@ -1,14 +1,14 @@
 import unittest
 
-from treeqa.models import RetrievedDocument
-from treeqa.retrieval import HybridRetriever
+from hamhrag.models import RetrievedDocument
+from hamhrag.retrieval import HybridRetriever
 
 
 class HybridRetrieverTest(unittest.TestCase):
     def test_retriever_returns_ranked_documents(self) -> None:
         retriever = HybridRetriever()
 
-        documents = retriever.retrieve("How does hybrid retrieval work in TreeQA?")
+        documents = retriever.retrieve("How does hybrid retrieval work in HamhRag?")
 
         self.assertTrue(documents)
         self.assertEqual(
@@ -19,7 +19,7 @@ class HybridRetrieverTest(unittest.TestCase):
     def test_retriever_uses_supported_source_types(self) -> None:
         retriever = HybridRetriever()
 
-        documents = retriever.retrieve("Tell me about TreeQA logic-tree reasoning and Neo4j")
+        documents = retriever.retrieve("Tell me about HamhRag logic-tree reasoning and Neo4j")
 
         source_types = {document.source_type for document in documents}
         self.assertTrue(source_types <= {"graph", "vector"})
@@ -29,7 +29,7 @@ class HybridRetrieverTest(unittest.TestCase):
         retriever = HybridRetriever()
 
         documents, trace = retriever.retrieve_with_trace(
-            "Explain how hybrid retrieval combines vector search and graph lookups in TreeQA."
+            "Explain how hybrid retrieval combines vector search and graph lookups in HamhRag."
         )
 
         self.assertTrue(documents)
@@ -41,7 +41,7 @@ class HybridRetrieverTest(unittest.TestCase):
         retriever = HybridRetriever()
 
         _documents, trace = retriever.retrieve_with_trace(
-            "Compare the difference between vector retrieval and graph retrieval in TreeQA."
+            "Compare the difference between vector retrieval and graph retrieval in HamhRag."
         )
 
         self.assertEqual(trace.route, "hybrid_parallel")

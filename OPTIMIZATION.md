@@ -177,7 +177,7 @@ Query 4: "Explain the history of the internet"
 
 ## Code Changes
 
-### File: `src/treeqa/retrieval/hybrid.py`
+### File: `src/hamhrag/retrieval/hybrid.py`
 
 #### Change 1: Raised Threshold
 
@@ -685,7 +685,7 @@ Query 5: "Explain the history of the internet"
 ### Files Modified
 
 ```
-src/treeqa/retrieval/hybrid.py
+src/hamhrag/retrieval/hybrid.py
 ├─ Line ~128: Threshold changed 0.28 → 0.35
 ├─ Line ~260: New fallback prediction logic in retrieve_with_trace()
 └─ Line ~262+: New _predict_graph_fallback_needed() method

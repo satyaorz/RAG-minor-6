@@ -1,7 +1,7 @@
 import os
 import json
-from treeqa.agents.decomposer import QueryDecomposer
-from treeqa.backends.llm import LLMClient
+from hamhrag.agents.decomposer import QueryDecomposer
+from hamhrag.backends.llm import LLMClient
 
 client = LLMClient()
 d = QueryDecomposer(llm_client=client)

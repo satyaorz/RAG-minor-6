@@ -1,11 +1,11 @@
 import unittest
 
-from treeqa.agents.corrector import CorrectionEngine
-from treeqa.agents.decomposer import QueryDecomposer
-from treeqa.backends.llm import FallbackLLMClient, OpenAICompatibleLLMClient, build_llm_client
-from treeqa.config import TreeQASettings
-from treeqa.models import RetrievedDocument
-from treeqa.retrieval.hybrid import HybridRetriever
+from hamhrag.agents.corrector import CorrectionEngine
+from hamhrag.agents.decomposer import QueryDecomposer
+from hamhrag.backends.llm import FallbackLLMClient, OpenAICompatibleLLMClient, build_llm_client
+from hamhrag.config import HamhRagSettings
+from hamhrag.models import RetrievedDocument
+from hamhrag.retrieval.hybrid import HybridRetriever
 
 
 class FakeLLMClient:
@@ -46,7 +46,7 @@ class FakeGraphBackend:
 
 class AdapterTest(unittest.TestCase):
     def test_build_llm_client_for_openai_provider(self) -> None:
-        settings = TreeQASettings(
+        settings = HamhRagSettings(
             llm_provider="openai",
             llm_model="gpt-4o-mini",
             openai_api_key="test-key",
@@ -59,15 +59,15 @@ class AdapterTest(unittest.TestCase):
     def test_decomposer_uses_llm_subquestions_when_available(self) -> None:
         decomposer = QueryDecomposer(
             llm_client=FakeLLMClient(
-                json_response={"sub_questions": ["Who built TreeQA?", "How is it validated?"]}
+                json_response={"sub_questions": ["Who built HamhRag?", "How is it validated?"]}
             )
         )
 
-        root = decomposer.decompose("Who built TreeQA and how is it validated?")
+        root = decomposer.decompose("Who built HamhRag and how is it validated?")
 
         self.assertEqual(
             [node.question for node in root.children],
-            ["Who built TreeQA?", "How is it validated?"],
+            ["Who built HamhRag?", "How is it validated?"],
         )
 
     def test_decomposer_handles_world_series_creation_bridge(self) -> None:
@@ -90,18 +90,18 @@ class AdapterTest(unittest.TestCase):
             [node.question for node in root.children],
             [
                 "Which baseball team won the 2015 World Series?",
-                "When was that baseball team established?",
+                "When was that baseball team created?",
             ],
         )
 
     def test_correction_engine_uses_llm_rewrite_when_available(self) -> None:
         corrector = CorrectionEngine(
-            llm_client=FakeLLMClient(text_response="TreeQA hallucination mitigation workflow")
+            llm_client=FakeLLMClient(text_response="HamhRag hallucination mitigation workflow")
         )
 
-        rewritten = corrector.refine("How does TreeQA help?", 1)
+        rewritten = corrector.refine("How does HamhRag help?", 1)
 
-        self.assertEqual(rewritten, "TreeQA hallucination mitigation workflow")
+        self.assertEqual(rewritten, "HamhRag hallucination mitigation workflow")
 
     def test_hybrid_retriever_combines_backends(self) -> None:
         retriever = HybridRetriever(
@@ -110,28 +110,28 @@ class AdapterTest(unittest.TestCase):
             top_k=2,
         )
 
-        documents = retriever.retrieve("TreeQA evidence")
+        documents = retriever.retrieve("HamhRag evidence")
 
         self.assertEqual([document.source_type for document in documents], ["graph", "vector"])
 
     def test_build_llm_client_for_openrouter_provider(self) -> None:
-        settings = TreeQASettings(
+        settings = HamhRagSettings(
             llm_provider="openrouter",
             llm_model="qwen/qwen3-32b:free",
             llm_base_url="https://openrouter.ai/api/v1",
             openrouter_api_key="router-key",
             openrouter_site_url="http://localhost",
-            openrouter_app_name="TreeQA",
+            openrouter_app_name="HamhRag",
         )
 
         client = build_llm_client(settings)
 
         self.assertIsInstance(client, OpenAICompatibleLLMClient)
         self.assertEqual(client.base_url, "https://openrouter.ai/api/v1")
-        self.assertEqual(client.extra_headers, {"HTTP-Referer": "http://localhost", "X-Title": "TreeQA"})
+        self.assertEqual(client.extra_headers, {"HTTP-Referer": "http://localhost", "X-Title": "HamhRag"})
 
     def test_build_llm_client_uses_fallback_wrapper_for_multiple_models(self) -> None:
-        settings = TreeQASettings(
+        settings = HamhRagSettings(
             llm_provider="openrouter",
             llm_model="qwen/qwen3-32b:free",
             llm_fallback_models=(
@@ -141,7 +141,7 @@ class AdapterTest(unittest.TestCase):
             llm_base_url="https://openrouter.ai/api/v1",
             openrouter_api_key="router-key",
             openrouter_site_url="http://localhost",
-            openrouter_app_name="TreeQA",
+            openrouter_app_name="HamhRag",
         )
 
         client = build_llm_client(settings)

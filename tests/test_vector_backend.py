@@ -68,7 +68,7 @@ class LocalVectorBackendIDFTest(unittest.TestCase):
     """Tests IDF table construction and lexical search without live model."""
 
     def _make_backend(self):
-        from treeqa.backends.vector import LocalVectorBackend
+        from hamhrag.backends.vector import LocalVectorBackend
 
         docs = _make_docs(5)
         embeddings = _make_embeddings(5)
@@ -171,7 +171,7 @@ class FaissVectorBackendTest(unittest.TestCase):
 
     def _make_backend(self):
         import faiss
-        from treeqa.backends.vector import FaissVectorBackend
+        from hamhrag.backends.vector import FaissVectorBackend
 
         # Construct without calling __init__ to avoid any library import cost
         backend = FaissVectorBackend.__new__(FaissVectorBackend)
@@ -187,7 +187,7 @@ class FaissVectorBackendTest(unittest.TestCase):
 
     def test_semantic_search_self_query_ranks_first(self) -> None:
         """Querying with doc-2's own embedding should return doc-2 at rank 0."""
-        from treeqa.backends.vector import FaissVectorBackend
+        from hamhrag.backends.vector import FaissVectorBackend
         backend = self._make_backend()
         # Override encode to always return embedding of doc-2
         backend._model.encode.side_effect = lambda texts, **kw: self._embeddings[2:3]
@@ -240,7 +240,7 @@ class BuildFaissIndexTest(unittest.TestCase):
             self.skipTest("faiss-cpu not installed")
 
         import faiss
-        from treeqa.ingest import IndexedChunk, _build_faiss_index
+        from hamhrag.ingest import IndexedChunk, _build_faiss_index
 
         chunks = [
             IndexedChunk(
@@ -278,7 +278,7 @@ class BuildFaissIndexTest(unittest.TestCase):
 
     def test_graceful_skip_when_faiss_missing(self) -> None:
         """_build_faiss_index should not raise when faiss is unavailable."""
-        from treeqa.ingest import IndexedChunk, _build_faiss_index
+        from hamhrag.ingest import IndexedChunk, _build_faiss_index
 
         with patch.dict("sys.modules", {"faiss": None}):
             # Should return None silently
@@ -292,8 +292,8 @@ class BuildFaissIndexTest(unittest.TestCase):
 
 class BuildVectorBackendFallbackTest(unittest.TestCase):
     def test_local_provider_falls_back_when_faiss_missing(self) -> None:
-        from treeqa.backends.vector import LocalVectorBackend, build_vector_backend
-        from treeqa.config import TreeQASettings
+        from hamhrag.backends.vector import LocalVectorBackend, build_vector_backend
+        from hamhrag.config import HamhRagSettings
 
         docs = _make_docs(3)
         with tempfile.TemporaryDirectory() as tmp:
@@ -311,7 +311,7 @@ class BuildVectorBackendFallbackTest(unittest.TestCase):
                 json.dumps(docs, ensure_ascii=True), encoding="utf-8"
             )
 
-            settings = TreeQASettings(
+            settings = HamhRagSettings(
                 vector_provider="local",
                 data_dir=str(data_dir),
             )
@@ -327,9 +327,9 @@ class BuildVectorBackendFallbackTest(unittest.TestCase):
 
 class PipelineUtilsTest(unittest.TestCase):
     def test_enrich_query_appends_prior_answers(self) -> None:
-        from treeqa.pipeline import TreeQAPipeline
+        from hamhrag.pipeline import HamhRagPipeline
 
-        enriched = TreeQAPipeline._enrich_query(
+        enriched = HamhRagPipeline._enrich_query(
             "When was the composer born?",
             [("Who composed Sruthilayalu?", "K. V. Mahadevan")],
         )
@@ -337,16 +337,16 @@ class PipelineUtilsTest(unittest.TestCase):
         self.assertIn("When was the composer born?", enriched)
 
     def test_enrich_query_no_prior_hops_unchanged(self) -> None:
-        from treeqa.pipeline import TreeQAPipeline
+        from hamhrag.pipeline import HamhRagPipeline
 
         q = "What is HotpotQA?"
-        enriched = TreeQAPipeline._enrich_query(q, [])
+        enriched = HamhRagPipeline._enrich_query(q, [])
         self.assertIn(q, enriched)
 
     def test_enrich_query_multiple_hops_all_appended(self) -> None:
-        from treeqa.pipeline import TreeQAPipeline
+        from hamhrag.pipeline import HamhRagPipeline
 
-        enriched = TreeQAPipeline._enrich_query(
+        enriched = HamhRagPipeline._enrich_query(
             "Q3",
             [("Q1", "Answer one"), ("Q2", "Answer two")],
         )
@@ -354,17 +354,17 @@ class PipelineUtilsTest(unittest.TestCase):
         self.assertIn("Answer two", enriched)
 
     def test_strip_sources_removes_trailing_block(self) -> None:
-        from treeqa.pipeline import TreeQAPipeline
+        from hamhrag.pipeline import HamhRagPipeline
 
         text = "K. V. Mahadevan was a composer. Sources: vector:doc-1, graph:fact-2"
-        stripped = TreeQAPipeline._strip_sources(text)
+        stripped = HamhRagPipeline._strip_sources(text)
         self.assertEqual(stripped, "K. V. Mahadevan was a composer.")
 
     def test_strip_sources_no_op_when_no_sources(self) -> None:
-        from treeqa.pipeline import TreeQAPipeline
+        from hamhrag.pipeline import HamhRagPipeline
 
         text = "Plain answer with no sources block."
-        self.assertEqual(TreeQAPipeline._strip_sources(text), text)
+        self.assertEqual(HamhRagPipeline._strip_sources(text), text)
 
 
 # ---------------------------------------------------------------------------
@@ -376,12 +376,12 @@ class PipelineHopChainingTest(unittest.TestCase):
 
     def _make_pipeline(self, generator=None, retriever=None):
         from unittest.mock import MagicMock
-        from treeqa.agents.decomposer import QueryDecomposer
-        from treeqa.config import TreeQASettings
-        from treeqa.models import RetrievedDocument, ValidationResult
-        from treeqa.pipeline import TreeQAPipeline
+        from hamhrag.agents.decomposer import QueryDecomposer
+        from hamhrag.config import HamhRagSettings
+        from hamhrag.models import RetrievedDocument, ValidationResult
+        from hamhrag.pipeline import HamhRagPipeline
 
-        settings = TreeQASettings(llm_provider="stub", vector_provider="memory", graph_provider="memory")
+        settings = HamhRagSettings(llm_provider="stub", vector_provider="memory", graph_provider="memory")
 
         if retriever is None:
             retriever = MagicMock()
@@ -398,7 +398,7 @@ class PipelineHopChainingTest(unittest.TestCase):
         validator.validate.return_value = ValidationResult(passed=True, confidence=0.9, rationale="OK")
         corrector = MagicMock()
 
-        return TreeQAPipeline(
+        return HamhRagPipeline(
             settings=settings,
             decomposer=QueryDecomposer(llm_client=None),
             retriever=retriever,
@@ -411,7 +411,7 @@ class PipelineHopChainingTest(unittest.TestCase):
         """Second sub-question generator call should receive prior_hops from hop 1."""
         call_args_list = []
 
-        def capture_generate(question, documents, prior_hops=None):
+        def capture_generate(question, documents, prior_hops=None, **kwargs):
             # Snapshot the list now — the parent _resolve_tree will mutate it after
             call_args_list.append((question, list(prior_hops) if prior_hops else []))
             return f"Answer for: {question}"
@@ -438,7 +438,7 @@ class PipelineHopChainingTest(unittest.TestCase):
     def test_retriever_query_enriched_with_prior_hop_answer(self) -> None:
         """Retriever must receive an enriched query on the second hop."""
         from unittest.mock import MagicMock
-        from treeqa.models import RetrievedDocument
+        from hamhrag.models import RetrievedDocument
 
         retriever = MagicMock()
         retriever.retrieve.return_value = [

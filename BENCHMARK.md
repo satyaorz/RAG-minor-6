@@ -10,7 +10,7 @@
 - Fields: question (required), answer (optional for latency-only runs).
 
 ## Procedure
-1. Build indices (if needed): python -m treeqa.cli ingest
+1. Build indices (if needed): python -m hamhrag.cli ingest
 2. Warmup: 2 questions (default)
 3. Runs: 1 repeat (default), scale to 3 for stable numbers
 4. Modes: hamh and rag
@@ -19,7 +19,7 @@
 Benchmarks force the LLM provider to `stub` to avoid heavyweight model imports and to focus on retrieval/runtime overhead.
 
 ## Command
-- python -m treeqa.cli bench --dataset data/benchmark/sample.jsonl --limit 50 --mode both
+- python -m hamhrag.cli bench --dataset data/benchmark/sample.jsonl --limit 50 --mode both
 
 ## Notes
 - Run on the same machine with no other heavy workloads.

@@ -1,0 +1,268 @@
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+import json
+import re
+from json import JSONDecodeError
+from typing import Any, Protocol
+import urllib.error
+import urllib.request
+
+from hamhrag.config import HamhRagSettings
+
+
+class LLMClient(Protocol):
+    def generate_text(
+        self, system_prompt: str, user_prompt: str, deadline: float | None = None
+    ) -> str:
+        ...
+
+    def generate_json(
+        self, system_prompt: str, user_prompt: str, deadline: float | None = None
+    ) -> dict[str, Any] | list[Any]:
+        ...
+
+
+@dataclass
+class OpenAICompatibleLLMClient:
+    api_key: str
+    base_url: str
+    model: str
+    timeout_seconds: int = 120  # raised to 120s to accommodate local Ollama cold-starts
+    temperature: float = 0.0
+    extra_headers: dict[str, str] | None = None
+    _cache: dict[tuple[str, str], str] = field(default_factory=dict, init=False)
+
+    def generate_text(
+        self, system_prompt: str, user_prompt: str, deadline: float | None = None
+    ) -> str:
+        cache_key = (system_prompt, user_prompt)
+        if cache_key in self._cache:
+            return self._cache[cache_key]
+
+        payload = {
+            "model": self.model,
+            "temperature": self.temperature,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+        }
+        
+        # Calculate dynamic timeout based on deadline
+        effective_timeout = self.timeout_seconds
+        if deadline is not None:
+            import time
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise RuntimeError("LLM request skipped: deadline already reached.")
+            # Give a small buffer (1s) to the socket timeout
+            effective_timeout = min(self.timeout_seconds, max(1, int(remaining)))
+
+        response = self._post_json(payload, timeout=effective_timeout)
+        choices = response.get("choices", [])
+        if not choices:
+            raise RuntimeError("LLM response did not include any choices.")
+        message = choices[0].get("message", {})
+        content = message.get("content", "")
+        if not isinstance(content, str):
+            raise RuntimeError("LLM response content was not text.")
+
+        result = self._strip_think_blocks(content).strip()
+        self._cache[cache_key] = result
+        return result
+
+    def generate_json(
+        self, system_prompt: str, user_prompt: str, deadline: float | None = None
+    ) -> dict[str, Any] | list[Any]:
+        text = self.generate_text(system_prompt, user_prompt, deadline=deadline)
+        parsed = self._parse_json_payload(text)
+        if parsed is None:
+            raise RuntimeError("LLM response did not contain valid JSON.")
+        return parsed
+
+    def _post_json(self, payload: dict[str, Any], timeout: int | None = None) -> dict[str, Any]:
+        url = f"{self.base_url.rstrip('/')}/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+        if self.extra_headers:
+            headers.update(self.extra_headers)
+        request = urllib.request.Request(
+            url=url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers=headers,
+            method="POST",
+        )
+        
+        effective_timeout = timeout if timeout is not None else self.timeout_seconds
+        
+        try:
+            with urllib.request.urlopen(request, timeout=effective_timeout) as response:
+                body = response.read().decode("utf-8")
+        except urllib.error.URLError as error:
+            raise RuntimeError(f"LLM request failed: {error}") from error
+
+        try:
+            decoded = json.loads(body)
+        except JSONDecodeError as error:
+            raise RuntimeError("LLM returned a non-JSON response body.") from error
+        if not isinstance(decoded, dict):
+            raise RuntimeError("Unexpected LLM response format.")
+
+        # Surface model-level errors (e.g., Ollama 404 model not found)
+        if "error" in decoded:
+            err = decoded["error"]
+            msg = err.get("message", str(err)) if isinstance(err, dict) else str(err)
+            raise RuntimeError(f"LLM returned an error: {msg}")
+
+        return decoded
+
+    @staticmethod
+    def _strip_think_blocks(text: str) -> str:
+        """
+        Qwen3 and DeepSeek-R1 models prepend a <think>...</think> reasoning block.
+        Strip it so the JSON parser sees clean output.
+        """
+        return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+
+    def _parse_json_payload(self, text: str) -> dict[str, Any] | list[Any] | None:
+        decoder = json.JSONDecoder()
+        for index, char in enumerate(text):
+            if char not in "[{":
+                continue
+            try:
+                payload, _ = decoder.raw_decode(text[index:])
+            except JSONDecodeError:
+                continue
+            if isinstance(payload, (dict, list)):
+                return payload
+        return None
+
+
+@dataclass(slots=True)
+class FallbackLLMClient:
+    clients: list[OpenAICompatibleLLMClient]
+
+    def generate_text(
+        self, system_prompt: str, user_prompt: str, deadline: float | None = None
+    ) -> str:
+        last_error: Exception | None = None
+        for client in self.clients:
+            try:
+                return client.generate_text(system_prompt, user_prompt, deadline=deadline)
+            except Exception as exc:
+                last_error = exc
+                continue
+        if last_error is None:
+            raise RuntimeError("No LLM clients were configured.")
+        raise RuntimeError(f"All configured LLM models failed. Last error: {last_error}")
+
+    def generate_json(
+        self, system_prompt: str, user_prompt: str, deadline: float | None = None
+    ) -> dict[str, Any] | list[Any]:
+        """
+        Try each client in order. Unlike generate_text, we attempt BOTH the text
+        generation AND the JSON parsing per client, so a parse failure on client[0]
+        still lets client[1] attempt a clean response.
+        """
+        last_error: Exception | None = None
+        for client in self.clients:
+            try:
+                text = client.generate_text(system_prompt, user_prompt, deadline=deadline)
+                parsed = client._parse_json_payload(text)
+                if parsed is None:
+                    last_error = RuntimeError(
+                        f"Model {client.model!r} returned text without valid JSON: {text[:200]!r}"
+                    )
+                    continue
+                return parsed
+            except Exception as exc:
+                last_error = exc
+                continue
+        if last_error is None:
+            raise RuntimeError("No LLM clients were configured.")
+        raise RuntimeError(f"All configured LLM models failed. Last error: {last_error}")
+
+
+def build_llm_client(settings: HamhRagSettings) -> LLMClient | None:
+    provider = settings.llm_provider.strip().lower()
+    if provider in {"", "stub", "none"}:
+        return None
+    if provider == "openai":
+        if not settings.openai_api_key:
+            raise ValueError("OPENAI_API_KEY must be set when HAMHRAG_LLM_PROVIDER=openai.")
+        if not settings.llm_model:
+            raise ValueError("HAMHRAG_LLM_MODEL must be set when HAMHRAG_LLM_PROVIDER=openai.")
+        return _build_openai_compatible_clients(
+            api_key=settings.openai_api_key,
+            base_url=settings.llm_base_url,
+            primary_model=settings.llm_model,
+            fallback_models=settings.llm_fallback_models,
+            timeout_seconds=settings.llm_timeout_seconds,
+            temperature=settings.llm_temperature,
+        )
+    if provider == "openrouter":
+        if not settings.openrouter_api_key:
+            raise ValueError(
+                "OPENROUTER_API_KEY must be set when HAMHRAG_LLM_PROVIDER=openrouter."
+            )
+        if not settings.llm_model:
+            raise ValueError(
+                "HAMHRAG_LLM_MODEL must be set when HAMHRAG_LLM_PROVIDER=openrouter."
+            )
+        extra_headers: dict[str, str] = {}
+        if settings.openrouter_site_url:
+            extra_headers["HTTP-Referer"] = settings.openrouter_site_url
+        if settings.openrouter_app_name:
+            extra_headers["X-Title"] = settings.openrouter_app_name
+        return _build_openai_compatible_clients(
+            api_key=settings.openrouter_api_key,
+            base_url=settings.llm_base_url or "https://openrouter.ai/api/v1",
+            primary_model=settings.llm_model,
+            fallback_models=settings.llm_fallback_models,
+            timeout_seconds=settings.llm_timeout_seconds,
+            temperature=settings.llm_temperature,
+            extra_headers=extra_headers or None,
+        )
+    if provider == "ollama":
+        if not settings.llm_model:
+            raise ValueError(
+                "HAMHRAG_LLM_MODEL must be set when HAMHRAG_LLM_PROVIDER=ollama."
+            )
+        return _build_openai_compatible_clients(
+            api_key="ollama",  # dummy — Ollama doesn't need a real key
+            base_url=settings.llm_base_url or "http://localhost:11434/v1",
+            primary_model=settings.llm_model,
+            fallback_models=settings.llm_fallback_models,
+            timeout_seconds=settings.llm_timeout_seconds,
+            temperature=settings.llm_temperature,
+        )
+    raise ValueError(f"Unsupported LLM provider: {settings.llm_provider!r}")
+
+
+def _build_openai_compatible_clients(
+    api_key: str,
+    base_url: str,
+    primary_model: str,
+    fallback_models: tuple[str, ...],
+    timeout_seconds: int,
+    temperature: float,
+    extra_headers: dict[str, str] | None = None,
+) -> LLMClient:
+    models = [primary_model, *fallback_models]
+    clients = [
+        OpenAICompatibleLLMClient(
+            api_key=api_key,
+            base_url=base_url,
+            model=model,
+            timeout_seconds=timeout_seconds,
+            temperature=temperature,
+            extra_headers=extra_headers,
+        )
+        for model in models
+    ]
+    if len(clients) == 1:
+        return clients[0]
+    return FallbackLLMClient(clients=clients)
